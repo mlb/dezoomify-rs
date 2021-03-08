@@ -3,7 +3,11 @@ use std::convert::TryFrom;
 use std::io::{self, Write};
 
 use log::{debug,info};
+<<<<<<< HEAD
 use image::{Pixel, Rgb, GenericImageView, SubImage, DynamicImage, Rgba};
+=======
+use image::{Pixel, Rgb, GenericImageView, Rgba};
+>>>>>>> e471344 (Added progress info to PixelStreamer)
 
 use crate::{Vec2d, max_size_in_rect};
 use crate::tile::Tile;
