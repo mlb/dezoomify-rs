@@ -46,6 +46,7 @@ pub mod krpano;
 pub mod nypl;
 pub mod iipimage;
 mod json_utils;
+mod progress;
 
 fn stdin_line() -> Result<String, ZoomError> {
     let stdin = std::io::stdin();

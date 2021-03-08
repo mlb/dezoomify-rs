@@ -7,6 +7,7 @@ use custom_error::custom_error;
 use lazy_static::lazy_static;
 
 use self::VarOrConst::Var;
+use crate::custom_yaml::variable::VarOrConst::Const;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Variable {
@@ -100,6 +101,24 @@ pub struct Constant {
     value: i64,
 }
 
+impl Constant {
+    fn check(&self) -> Result<(), BadConstantError> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^\w+$").unwrap();
+        }
+        if !RE.is_match(&self.name) {
+            return Err(BadConstantError::BadName {
+                name: self.name.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 #[derive(Deserialize, Clone, Debug)]
 #[serde(untagged)]
 pub enum VarOrConst {
@@ -116,6 +135,13 @@ impl VarOrConst {
             step,
         };
         var.check().and(Ok(Var(var)))
+    }
+    pub fn orconst(name: &str, value: i64) -> Result<VarOrConst, BadConstantError> {
+        let orconst = Constant {
+            name: name.to_string(),
+            value
+        };
+        orconst.check().and(Ok(Const(orconst)))
     }
     pub fn name(&self) -> &str {
         match self {
@@ -176,12 +202,17 @@ custom_error! {pub BadVariableError
     EvalError{source:evalexpr::EvalexprError} = "{source}",
 }
 
+custom_error! {pub BadConstantError
+    BadName{name: String} = "invalid constant name: '{name}'",
+    EvalError{source:evalexpr::EvalexprError} = "{source}",
+}
+
 #[cfg(test)]
 mod tests {
     use evalexpr::Context;
 
     use super::super::variable::VarOrConst;
-    use super::{Variable, Variables};
+    use super::{Variable, Constant, Variables};
 
     #[test]
     fn variable_iteration() {
@@ -228,5 +259,18 @@ mod tests {
 
         assert_eq!(Some(&1.into()), ctxs[3].get_value("x"));
         assert_eq!(Some(&9.into()), ctxs[3].get_value("y"));
+    }
+
+    #[test]
+    fn constant_validity_check_name() {
+        let check = Constant {
+            name: "hello world".to_string(),
+            value : 0,
+        }
+        .check();
+        assert!(check
+            .unwrap_err()
+            .to_string()
+            .contains("invalid constant name"))
     }
 }
