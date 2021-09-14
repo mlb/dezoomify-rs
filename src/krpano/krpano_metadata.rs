@@ -63,7 +63,7 @@ impl TopLevelTags {
     fn into_image_iter_with_name(self, name: Arc<str>) -> Box<dyn Iterator<Item=ImageInfo>> {
         match self {
             Self::Image(image) =>
-                Box::new(std::iter::once(ImageInfo { name, image })),
+                Box::new(std::iter::once(ImageInfo { image, name })),
             Self::Scene(s) =>
                 Box::new(s.into_image_iter_with_name(name)),
             _ =>
@@ -74,7 +74,7 @@ impl TopLevelTags {
         match self {
             Self::SourceDetails { subject } => Some(subject),
             Self::Data(bytes) =>
-                serde_json::from_str::<KrpanoMetaData>(&bytes).ok()
+                serde_json::from_str::<KrpanoMetaData>(bytes).ok()
                     .map(|m| m.title),
             _ => None
         }

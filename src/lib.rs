@@ -1,16 +1,19 @@
-use std::{fs, fmt, io};
+#![allow(clippy::upper_case_acronyms)]
+
+use std::{fmt, fs, io};
+use std::env::current_dir;
+use std::error::Error;
 use std::io::BufRead;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use futures::stream::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use log::{debug, info, warn};
+use log::{debug, info};
 use reqwest::Client;
 
 pub use arguments::Arguments;
-use dezoomer::{PostProcessFn, TileFetchResult, ZoomLevel, ZoomLevelIter};
+use dezoomer::{TileFetchResult, ZoomLevel, ZoomLevelIter};
 use dezoomer::{Dezoomer, DezoomerError, DezoomerInput, ZoomLevels};
 use dezoomer::TileReference;
 pub use errors::ZoomError;
@@ -19,11 +22,10 @@ use output_file::get_outname;
 use tile::Tile;
 pub use vec2d::Vec2d;
 
-use crate::encoder::tile_buffer::TileBuffer;
-use crate::output_file::reserve_output_file;
 use crate::dezoomer::PageContents;
-use std::error::Error;
-use std::env::current_dir;
+use crate::encoder::tile_buffer::TileBuffer;
+use crate::network::TileDownloader;
+use crate::output_file::reserve_output_file;
 
 mod arguments;
 mod encoder;
@@ -141,7 +143,7 @@ async fn find_zoomlevel(args: &Arguments) -> Result<ZoomLevel, ZoomError> {
 }
 
 pub async fn dezoomify(args: &Arguments) -> Result<PathBuf, ZoomError> {
-    let zoom_level = find_zoomlevel(&args).await?;
+    let zoom_level = find_zoomlevel(args).await?;
     let base_dir = current_dir()?;
     let outname = get_outname(&args.outfile, &zoom_level.title(), &base_dir,zoom_level.size_hint());
     let save_as = fs::canonicalize(outname.as_path()).unwrap_or_else(|_e| outname.clone());
@@ -158,7 +160,13 @@ pub async fn dezoomify_level(
     tile_buffer: TileBuffer,
 ) -> Result<(), ZoomError> {
     let level_headers = zoom_level.http_headers();
-    let http_client = client(level_headers.iter().chain(args.headers()), &args, None)?;
+    let downloader = TileDownloader {
+        http_client: client(level_headers.iter().chain(args.headers()), args, None)?,
+        post_process_fn: zoom_level.post_process_fn(),
+        retries: args.retries,
+        retry_delay: args.retry_delay,
+        tile_storage_folder: args.tile_storage_folder.clone(),
+    };
 
     info!("Creating canvas");
     let mut canvas = tile_buffer;
@@ -167,7 +175,6 @@ pub async fn dezoomify_level(
     let mut total_tiles = 0u64;
     let mut successful_tiles = 0u64;
 
-    let post_process_fn = zoom_level.post_process_fn();
 
     progress.set_message("Computing the URLs of the image tiles...");
 
@@ -181,10 +188,8 @@ pub async fn dezoomify_level(
 
         progress.set_message("Requesting the tiles...");
 
-        let &Arguments { retries, retry_delay, .. } = args;
         let mut stream = futures::stream::iter(tile_refs)
-            .map(|tile_ref: TileReference|
-                download_tile(post_process_fn, tile_ref, &http_client, retries, retry_delay))
+            .map(|tile_ref: TileReference| downloader.download_tile(tile_ref))
             .buffer_unordered(args.parallelism);
 
         last_successes = 0;
@@ -199,14 +204,14 @@ pub async fn dezoomify_level(
             progress.inc(1);
             let tile = match tile_result {
                 Ok(tile) => {
-                    progress.set_message(&format!("Downloaded tile at {}", tile.position()));
+                    progress.set_message(format!("Loaded tile at {}", tile.position()));
                     tile_size.replace(tile.size());
                     last_successes += 1;
                     Some(tile)
                 }
                 Err(err) => {
                     // If a tile download fails, we replace it with an empty tile
-                    progress.set_message(&err.to_string());
+                    progress.set_message(err.to_string());
                     let position = err.tile_reference.position;
                     tile_size.and_then(|tile_size| {
                         zoom_level_iter.size_hint().map(|canvas_size| {
@@ -233,41 +238,15 @@ pub async fn dezoomify_level(
     if successful_tiles == 0 { return Err(ZoomError::NoTile); }
 
     if last_successes < last_count {
-        Err(ZoomError::PartialDownload { successful_tiles, total_tiles })
+        let destination = canvas.destination().to_string_lossy().to_string();
+        Err(ZoomError::PartialDownload { successful_tiles, total_tiles, destination })
     } else {
         Ok(())
     }
 }
 
-async fn download_tile(
-    post_process_fn: PostProcessFn,
-    tile_reference: TileReference,
-    client: &reqwest::Client,
-    retries: usize,
-    retry_delay: Duration,
-) -> Result<Tile, TileDownloadError> {
-    let mut res = Tile::download(post_process_fn, &tile_reference, client).await;
-    // The initial delay after which a failed request is retried depends on the position of the tile
-    // in order to avoid sending repeated "bursts" of requests to a server that is struggling
-    let n = 100;
-    let idx: f64 = ((tile_reference.position.x + tile_reference.position.y) % n).into();
-    let mut wait_time = retry_delay + Duration::from_secs_f64(idx * retry_delay.as_secs_f64() / n as f64);
-    for _ in 0..retries {
-        res = Tile::download(post_process_fn, &tile_reference, client).await;
-        match &res {
-            Ok(_) => { break; },
-            Err(e) => {
-                warn!("{}. Retrying tile download in {:?}.", e, wait_time);
-                tokio::time::sleep(wait_time).await;
-                wait_time *= 2;
-            }
-        }
-    }
-    res.map_err(|cause| TileDownloadError { tile_reference, cause })
-}
-
 #[derive(Debug)]
-struct TileDownloadError {
+pub struct TileDownloadError {
     tile_reference: TileReference,
     cause: ZoomError,
 }

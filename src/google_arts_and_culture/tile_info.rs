@@ -41,7 +41,7 @@ impl FromStr for PageInfo {
 
     /// Parses a google arts project HTML page
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let re = Regex::new(r#"]\r?\n,"(//[^"/]+/[^"/]+)",(?:"([^"]+)"|null)"#).unwrap();
+        let re = Regex::new(r#"]\r?\n?,"(//[^"/]+/[^"/]+)",(?:"([^"]+)"|null)"#).unwrap();
         let mat = re.captures(s).ok_or(PageParseError::NoToken)?;
         let base_url = format!("https:{}", &mat[1]);
         let token = mat
@@ -136,6 +136,16 @@ mod tests {
             "https://lh6.ggpht.com/V4etPVsk7ooKgotTWex4Cat1uaXYEYV9yaan76p1PMZTikOxZvc6QRAArifFStw";
         assert_eq!(info.base_url, base_url);
         assert_eq!(info.token, "K7E6UJlQsaoENCVi1uyxnnkiB4s");
+    }
+
+    #[test]
+    fn test_parse_html_2021_06_30() {
+        // See: https://github.com/lovasoa/dezoomify/issues/556
+        let info: PageInfo = parse_html_file("page_source_2021-06-30.html");
+        let base_url =
+            "https://lh3.googleusercontent.com/uHsSuY7ZkqoUY5xOkiRO2THfT7i9yLT9TXjlxr4IufwA3eO33QvjWDmWkldtINkh";
+        assert_eq!(info.base_url, base_url);
+        assert_eq!(info.token, "7jSbhbZBiRhB4YLYrYIMQJQ6uxE");
     }
 
     #[test]

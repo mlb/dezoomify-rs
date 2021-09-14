@@ -1,4 +1,4 @@
-use evalexpr::HashMapContext;
+use evalexpr::{HashMapContext, ContextWithMutableVariables};
 use itertools::Itertools;
 use regex::Regex;
 use serde::Deserialize;
@@ -185,7 +185,6 @@ impl Variables {
             .multi_cartesian_product()
             .map(|var_values| {
                 // Iterator on all the combination of values for the variables
-                use evalexpr::Context;
                 let mut ctx = HashMapContext::new();
                 for (var_name, var_value) in var_values {
                     ctx.set_value(var_name.into(), var_value.into())?;
