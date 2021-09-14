@@ -10,7 +10,7 @@ use lazy_static::lazy_static;
 use crate::{TileReference, Vec2d};
 
 use super::variable::{BadVariableError, Variables};
-use evalexpr::{Context, IntType, HashMapContext};
+use evalexpr::{Context, IntType, HashMapContext, ContextWithMutableVariables};
 
 #[derive(Deserialize, Debug)]
 pub struct TileSet {
