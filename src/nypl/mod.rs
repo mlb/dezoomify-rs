@@ -74,7 +74,7 @@ fn iter_levels(uri: &str, contents: &[u8])
     Ok(levels)
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 struct Level {
     metadata: Arc<Metadata>,
     base: Arc<str>,
@@ -117,12 +117,12 @@ impl TilesRect for Level {
     }
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct MetadataRoot {
     configs: HashMap<String, Metadata>,
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct Metadata {
     size: MetadataSize,
     #[serde(alias = "tilesize", deserialize_with = "number_or_string")]
@@ -145,7 +145,7 @@ impl From<MetadataSize> for Vec2d {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Deserialize)]
 struct MetadataSize {
     #[serde(deserialize_with = "number_or_string")]
     width: u32,
@@ -156,9 +156,9 @@ struct MetadataSize {
 custom_error! {pub NYPLError
     JsonError{resp: String} = "Failed to parse NYPL Image meta as json, \
         got content(blank shows the site has no zoom function for this one):\n {resp}",
-    Utf8{source: std::str::Utf8Error} = "Invalid NYPL metadata file: {}",
-    NoIdInUrl{url: String} = "Unable to extract an image id from {:?}",
-    BadMetadata{source: serde_json::Error} = "Invalid nypl metadata: {}",
+    Utf8{source: std::str::Utf8Error} = "Invalid NYPL metadata file: {source}",
+    NoIdInUrl{url: String} = "Unable to extract an image id from {url:?}",
+    BadMetadata{source: serde_json::Error} = "Invalid nypl metadata: {source}",
     NoMetadata = "No metadata found. This image is probably not tiled, \
     and you can download it directly by right-clicking on it from \
     your browser without any external tool.",

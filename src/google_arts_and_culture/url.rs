@@ -1,12 +1,13 @@
 use std::io::Write;
 
-use hmac::{Hmac, Mac, NewMac};
+use hmac::{SimpleHmac, Mac};
 use sha1::Sha1;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
 use super::PageInfo;
 use std::ops::Deref;
 
-type HmacSha1 = Hmac<Sha1>;
+type HmacSha1 = SimpleHmac<Sha1>;
 
 pub fn compute_url(page: &PageInfo, x: u32, y: u32, z: usize) -> String {
     let mut url = format!("{}=x{}-y{}-z{}-t", page.base_url, x, y, z);
@@ -22,7 +23,7 @@ pub fn compute_url(page: &PageInfo, x: u32, y: u32, z: usize) -> String {
 }
 
 fn custom_base64(digest: &[u8]) -> String {
-    base64::encode_config(digest, base64::URL_SAFE_NO_PAD).replace('-', "_")
+    URL_SAFE_NO_PAD.encode(digest).replace('-', "_")
 }
 
 fn mac_digest(b: &[u8]) -> impl Deref<Target=[u8]> {

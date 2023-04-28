@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use std::io::{self, Write};
 
 use log::{debug,info};
-use image::{Pixel, Rgb, GenericImageView, Rgba};
+use image::{Pixel, Rgb, GenericImageView, SubImage, DynamicImage, Rgba};
 
 use crate::{Vec2d, max_size_in_rect};
 use crate::tile::Tile;
@@ -93,7 +93,8 @@ impl<W: Write> PixelStreamer<W> {
         Ok(())
     }
 
-    pub fn into_writer(self) -> W { self.writer }
+    // https://github.com/image-rs/image-png/issues/307
+    // pub fn into_writer(self) -> W { self.writer }
 }
 
 struct ImageStrip {
@@ -112,7 +113,7 @@ impl ImageStrip {
         let position = self.source.position + Vec2d { x: 0, y: self.line };
         (position.y as usize) * (image_size.x as usize) + (position.x as usize)
     }
-    pub fn cropped(&self, image_size: Vec2d) -> impl GenericImageView<Pixel=Rgba<u8>> + '_ {
+    pub fn cropped(&self, image_size: Vec2d) -> SubImage<&DynamicImage> {
         crop_tile(&self.source, image_size)
     }
     /// Length of the strip in pixels

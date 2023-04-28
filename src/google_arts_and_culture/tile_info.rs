@@ -6,14 +6,14 @@ use serde::Deserialize;
 
 use custom_error::custom_error;
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct TileInfo {
     pub tile_width: u32,
     pub tile_height: u32,
     pub pyramid_level: Vec<PyramidLevel>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct PyramidLevel {
     pub num_tiles_x: u32,
     pub num_tiles_y: u32,
@@ -21,6 +21,7 @@ pub struct PyramidLevel {
     pub empty_pels_y: u32,
 }
 
+#[derive(Debug)]
 pub struct PageInfo {
     pub base_url: String,
     pub token: String,
@@ -32,8 +33,31 @@ impl PageInfo {
         self.base_url.clone() + "=g"
     }
     pub fn path(&self) -> &str {
-        self.base_url.rsplit('/').next().unwrap()
+        // The base url is something like "https://lh3.googleusercontent.com/ci/xxx",
+        // and we need to extract the "ci/xxx" part.
+        self.base_url.splitn(4, '/').nth(3).expect("Google Arts base_url is malformed")
     }
+}
+
+fn get_name_from_gap_html(html: &str) -> String {
+    let name = Regex::new(r#"<h1 class="[^"]+">([^<]+)</h1><h2 class="[^"]+"><span class="[^"]+"><a href="[^"]+">([^"]+) ([^"]+)</a></span><span class="[^"]+">([^<]+)</span></h2>"#)
+        .unwrap()
+        .captures(html)
+        .map(|c| format!("{}, {}; {}; {}",
+            &(c[3]),
+            &(c[2]),
+            &(c[1]),
+            &(c[4])));
+
+    if let Some(result) = name {
+        return result
+    }
+
+    Regex::new(r#""name":"([^"]+)"#)
+        .unwrap()
+        .captures(html)
+        .map(|c| (c[1]).to_string())
+        .unwrap_or_else(||"Google Arts and Culture Image".into())
 }
 
 impl FromStr for PageInfo {
@@ -41,18 +65,14 @@ impl FromStr for PageInfo {
 
     /// Parses a google arts project HTML page
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let re = Regex::new(r#"]\r?\n?,"(//[^"/]+/[^"/]+)",(?:"([^"]+)"|null)"#).unwrap();
+        let re = Regex::new(r#"]\r?\n?,"(//[a-zA-Z0-9./_\-]+)",(?:"([^"]+)"|null)"#).unwrap();
         let mat = re.captures(s).ok_or(PageParseError::NoToken)?;
         let base_url = format!("https:{}", &mat[1]);
         let token = mat
             .get(2)
             .map_or_else(Default::default, |s| s.as_str().into());
 
-        let name = Regex::new(r#""name":"([^"]+)"#)
-            .unwrap()
-            .captures(s)
-            .map(|c| (&c[1]).to_string())
-            .unwrap_or_else(|| "Google Arts and culture image".into());
+        let name = get_name_from_gap_html(s);
 
         Ok(PageInfo {
             base_url,

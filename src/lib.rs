@@ -127,6 +127,7 @@ fn progress_bar(n: usize) -> ProgressBar {
     progress.set_style(
         ProgressStyle::default_bar()
             .template("[ETA:{eta}] {bar:40.cyan/blue} {pos:>4}/{len:4} {msg}")
+            .expect("Invalid indicatif progress bar template")
             .progress_chars("##-"),
     );
     progress
@@ -171,7 +172,7 @@ pub async fn dezoomify_level(
     info!("Creating canvas");
     let mut canvas = tile_buffer;
 
-    let progress = progress_bar(0);
+    let progress = progress_bar(10);
     let mut total_tiles = 0u64;
     let mut successful_tiles = 0u64;
 
@@ -231,11 +232,12 @@ pub async fn dezoomify_level(
         });
     }
 
+    if successful_tiles == 0 { return Err(ZoomError::NoTile); }
+
     progress.set_message("Downloaded all tiles. Finalizing the image file.");
     canvas.finalize().await?;
 
     progress.finish_with_message("Finished tile download");
-    if successful_tiles == 0 { return Err(ZoomError::NoTile); }
 
     if last_successes < last_count {
         let destination = canvas.destination().to_string_lossy().to_string();
