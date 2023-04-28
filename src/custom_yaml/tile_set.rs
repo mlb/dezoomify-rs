@@ -10,15 +10,7 @@ use lazy_static::lazy_static;
 use crate::{TileReference, Vec2d};
 
 use super::variable::{BadVariableError, Variables};
-<<<<<<< HEAD
-<<<<<<< HEAD
 use evalexpr::{Context, IntType, HashMapContext, ContextWithMutableVariables};
-=======
-use evalexpr::{Context, IntType, HashMapContext};
->>>>>>> e471344 (Added progress info to PixelStreamer)
-=======
-use evalexpr::{Context, IntType, HashMapContext, ContextWithMutableVariables};
->>>>>>> 6516fcf (Added eval of ContextWithMutableVariables for set_value)
 
 #[derive(Deserialize, Debug)]
 pub struct TileSet {
