@@ -11,10 +11,14 @@ use crate::{TileReference, Vec2d};
 
 use super::variable::{BadVariableError, Variables};
 <<<<<<< HEAD
+<<<<<<< HEAD
 use evalexpr::{Context, IntType, HashMapContext, ContextWithMutableVariables};
 =======
 use evalexpr::{Context, IntType, HashMapContext};
 >>>>>>> e471344 (Added progress info to PixelStreamer)
+=======
+use evalexpr::{Context, IntType, HashMapContext, ContextWithMutableVariables};
+>>>>>>> 6516fcf (Added eval of ContextWithMutableVariables for set_value)
 
 #[derive(Deserialize, Debug)]
 pub struct TileSet {
@@ -203,7 +207,6 @@ mod tests {
         ctx.set_value("w".into(), 20.into())?;
         ctx.set_value("h".into(), 30.into())?;
         assert_eq!(tpl.eval(&ctx)?, "a 0 b 10 c 20 d 30 e");
-<<<<<<< HEAD
         Ok(())
     }
 
@@ -214,8 +217,6 @@ mod tests {
         ctx.set_value("x".into(), 0.into())?;
         ctx.set_value("y".into(), 10.into())?;
         assert_eq!(tpl.eval(&ctx)?, "000 05");
-=======
->>>>>>> e471344 (Added progress info to PixelStreamer)
         Ok(())
     }
 
