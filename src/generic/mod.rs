@@ -3,11 +3,11 @@ use std::collections::HashSet;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::dezoomer::{
-    single_level, Dezoomer, DezoomerError, DezoomerInput, TileFetchResult, TileProvider,
-    TileReference, ZoomLevels,
-};
 use crate::Vec2d;
+use crate::dezoomer::{
+    Dezoomer, DezoomerError, DezoomerInput, TileFetchResult, TileProvider, TileReference,
+    ZoomLevels, single_level,
+};
 
 mod dichotomy_2d;
 

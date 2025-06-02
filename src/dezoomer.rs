@@ -173,11 +173,7 @@ impl<'a> ZoomLevelIter<'a> {
         assert!(!self.waiting_results);
         self.waiting_results = true;
         let tiles = self.zoom_level.next_tiles(self.previous);
-        if tiles.is_empty() {
-            None
-        } else {
-            Some(tiles)
-        }
+        if tiles.is_empty() { None } else { Some(tiles) }
     }
     pub fn set_fetch_result(&mut self, result: TileFetchResult) {
         assert!(self.waiting_results);

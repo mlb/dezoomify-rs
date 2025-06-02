@@ -207,10 +207,12 @@ mod tests {
             step: 1,
         }
         .check();
-        assert!(check
-            .unwrap_err()
-            .to_string()
-            .contains("invalid variable name"))
+        assert!(
+            check
+                .unwrap_err()
+                .to_string()
+                .contains("invalid variable name")
+        )
     }
 
     #[test]

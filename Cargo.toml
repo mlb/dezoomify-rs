@@ -2,7 +2,7 @@
 name = "dezoomify-rs"
 version = "2.13.0"
 authors = ["lovasoa"]
-edition = "2021"
+edition = "2024"
 license-file = "LICENSE"
 description = "Allows downloading zoomable images. Supports several different formats such as zoomify, iiif, and deep zoom images."
 documentation = "https://docs.rs/dezoomify-rs"

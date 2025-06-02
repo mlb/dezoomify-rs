@@ -5,10 +5,10 @@ use log::debug;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::encoder::Encoder;
-use crate::tile::Tile;
 use crate::Vec2d;
 use crate::ZoomError;
+use crate::encoder::Encoder;
+use crate::tile::Tile;
 use std::fs::File;
 use std::io::BufWriter;
 

@@ -6,7 +6,7 @@ Used to receive tiles asynchronously and provide them to the encoder
 use log::debug;
 use tokio::sync::mpsc;
 
-use crate::encoder::{encoder_for_name, Encoder};
+use crate::encoder::{Encoder, encoder_for_name};
 use crate::tile::Tile;
 use crate::{Vec2d, ZoomError};
 use log::warn;

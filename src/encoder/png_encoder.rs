@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use crate::tile::Tile;
 use crate::{Vec2d, ZoomError};
 
-use super::pixel_streamer::PixelStreamer;
 use super::Encoder;
+use super::pixel_streamer::PixelStreamer;
 
 pub struct PngEncoder {
     pixel_streamer: Option<PixelStreamer<png::StreamWriter<'static, File>>>,

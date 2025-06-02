@@ -1,7 +1,7 @@
 use colour::{green_ln, red_ln, yellow_ln};
 use human_panic::setup_panic;
 
-use dezoomify_rs::{dezoomify, Arguments, ZoomError};
+use dezoomify_rs::{Arguments, ZoomError, dezoomify};
 
 #[tokio::main]
 async fn main() {

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use image::{self, DynamicImage, GenericImageView};
 use image_hasher::HasherConfig;
 
-use dezoomify_rs::{dezoomify, Arguments, ZoomError};
+use dezoomify_rs::{Arguments, ZoomError, dezoomify};
 
 /// Dezoom a file locally
 #[tokio::test(flavor = "multi_thread")]

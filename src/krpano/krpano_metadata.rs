@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use serde::{de, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de};
 
 use crate::Vec2d;
 
@@ -244,9 +244,9 @@ impl FromStr for TemplateString<TemplateVariable> {
     type Err = String;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        use itertools::Itertools;
         use TemplateStringPart::*;
         use TemplateVariable::*;
+        use itertools::Itertools;
         let mut chars = input.chars();
         let mut parts = vec![];
         loop {

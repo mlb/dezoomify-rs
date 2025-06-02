@@ -7,7 +7,7 @@ use log::debug;
 
 use crate::encoder::crop_tile;
 use crate::tile::Tile;
-use crate::{max_size_in_rect, Vec2d};
+use crate::{Vec2d, max_size_in_rect};
 use std::sync::Arc;
 
 const BYTES_PER_PIXEL: usize = Rgb::<u8>::CHANNEL_COUNT as usize;

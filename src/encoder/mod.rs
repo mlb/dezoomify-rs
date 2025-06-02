@@ -4,7 +4,7 @@ use image::{DynamicImage, GenericImageView, Rgb, Rgba, SubImage};
 use log::debug;
 
 use crate::tile::Tile;
-use crate::{max_size_in_rect, Vec2d, ZoomError};
+use crate::{Vec2d, ZoomError, max_size_in_rect};
 
 pub mod canvas;
 pub mod iiif_encoder;

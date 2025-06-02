@@ -7,12 +7,12 @@ use custom_error::custom_error;
 use regex::Regex;
 use serde::Deserialize;
 
+use crate::Vec2d;
 use crate::dezoomer::{
     Dezoomer, DezoomerError, DezoomerInput, DezoomerInputWithContents, IntoZoomLevels,
     TileReference, TilesRect, ZoomLevels,
 };
 use crate::json_utils::number_or_string;
-use crate::Vec2d;
 
 /// A dezoomer for NYPL images
 #[derive(Default)]

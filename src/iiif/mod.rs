@@ -183,11 +183,7 @@ impl std::fmt::Debug for IIIFZoomLevel {
             .last()
             .and_then(|s: &str| {
                 let s = s.trim();
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
+                if s.is_empty() { None } else { Some(s) }
             })
             .unwrap_or("IIIF Image");
         write!(f, "{}", name)
@@ -218,10 +214,13 @@ fn test_tiles() {
         .into_iter()
         .map(|t| t.url)
         .collect();
-    assert_eq!(tiles, vec![
-        "http://www.asmilano.it/fast/iipsrv.fcgi?IIIF=/opt/divenire/files/./tifs/05/36/536765.tif/0,0,15001,32768/234,512/0/default.jpg",
-        "http://www.asmilano.it/fast/iipsrv.fcgi?IIIF=/opt/divenire/files/./tifs/05/36/536765.tif/0,32768,15001,15234/234,238/0/default.jpg",
-    ])
+    assert_eq!(
+        tiles,
+        vec![
+            "http://www.asmilano.it/fast/iipsrv.fcgi?IIIF=/opt/divenire/files/./tifs/05/36/536765.tif/0,0,15001,32768/234,512/0/default.jpg",
+            "http://www.asmilano.it/fast/iipsrv.fcgi?IIIF=/opt/divenire/files/./tifs/05/36/536765.tif/0,32768,15001,15234/234,238/0/default.jpg",
+        ]
+    )
 }
 
 #[test]
@@ -307,7 +306,10 @@ fn test_qualities() {
     let level = &mut levels[0];
     assert_eq!(level.size_hint(), Some(Vec2d { x: 515, y: 381 }));
     let tiles: Vec<String> = level.next_tiles(None).into_iter().map(|t| t.url).collect();
-    assert_eq!(tiles, vec![
-        "https://images.britishart.yale.edu/iiif/fd470c3e-ead0-4878-ac97-d63295753f82/0,0,5156,3816/515,381/0/native.png",
-    ])
+    assert_eq!(
+        tiles,
+        vec![
+            "https://images.britishart.yale.edu/iiif/fd470c3e-ead0-4878-ac97-d63295753f82/0,0,5156,3816/515,381/0/native.png",
+        ]
+    )
 }

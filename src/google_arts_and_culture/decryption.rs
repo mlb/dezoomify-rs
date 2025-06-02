@@ -1,4 +1,4 @@
-use aes::cipher::{block_padding::NoPadding, BlockDecryptMut, KeyIvInit};
+use aes::cipher::{BlockDecryptMut, KeyIvInit, block_padding::NoPadding};
 use custom_error::custom_error;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;

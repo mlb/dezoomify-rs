@@ -74,7 +74,7 @@ pub fn get_outname(
 mod tests {
     use std::env::{current_dir, set_current_dir};
     use std::error::Error;
-    use std::fs::{remove_file, File};
+    use std::fs::{File, remove_file};
     use std::path::Path;
     use std::sync::Mutex;
 

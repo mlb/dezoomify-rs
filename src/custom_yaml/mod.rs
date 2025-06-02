@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
+use crate::TileReference;
 use crate::dezoomer::*;
 use crate::network::default_headers;
-use crate::TileReference;
 
 mod tile_set;
 mod variable;

@@ -1,8 +1,8 @@
+use crate::Vec2d;
 use crate::dezoomer::{
     Dezoomer, DezoomerError, DezoomerInput, DezoomerInputWithContents, IntoZoomLevels, TilesRect,
     ZoomLevels,
 };
-use crate::Vec2d;
 use custom_error::custom_error;
 use regex::Regex;
 use std::convert::TryFrom;

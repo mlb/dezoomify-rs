@@ -5,14 +5,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use fixedbitset::FixedBitSet;
-use image::imageops::FilterType;
 use image::GenericImage;
+use image::imageops::FilterType;
 use image::{DynamicImage, GenericImageView, SubImage};
 use log::{debug, warn};
 
-use crate::errors::image_error_to_io_error;
 use crate::Vec2d;
-use crate::{max_size_in_rect, Tile};
+use crate::errors::image_error_to_io_error;
+use crate::{Tile, max_size_in_rect};
 
 pub trait TileSaver {
     fn save_tile(&self, size: Vec2d, tile: Tile) -> io::Result<()>;
@@ -73,7 +73,7 @@ impl<T: TileSaver> Retiler<T> {
         self.original_size / self.scale_factor
     }
 
-    fn tile_positions(&self, position: Vec2d, size: Vec2d) -> impl Iterator<Item = Vec2d> {
+    fn tile_positions(&self, position: Vec2d, size: Vec2d) -> impl Iterator<Item = Vec2d> + use<T> {
         let top_left = (position / self.tile_size) * self.tile_size;
         let bottom_right = ((position + size).ceil_div(self.tile_size)) * self.tile_size;
         let dy = self.tile_size.y as usize;
@@ -127,10 +127,12 @@ impl<T: TileSaver> Retiler<T> {
                     self.tiles.insert(cur_pos, None);
                 }
             } else {
-                debug!("Source tiles overlap:\
+                debug!(
+                    "Source tiles overlap:\
                         Received pixels for tile at {} on level {}, but this tile has already been written.\
                         Ignoring them (source tiles overlap).",
-                       cur_pos, self.scale_factor)
+                    cur_pos, self.scale_factor
+                )
             }
         }
 

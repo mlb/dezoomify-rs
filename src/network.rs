@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use image::DynamicImage;
 use log::{debug, trace, warn};
-use reqwest::{header, Client};
+use reqwest::{Client, header};
 use sanitize_filename_reader_friendly::sanitize;
 use tokio::fs;
 use tokio::time::Duration;
@@ -75,7 +75,7 @@ impl TileDownloader {
                     return Ok(Tile {
                         image,
                         position: tile_reference.position,
-                    })
+                    });
                 }
                 Err(cause) => {
                     if failures >= self.retries {

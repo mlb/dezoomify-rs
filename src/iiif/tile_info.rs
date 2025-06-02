@@ -7,8 +7,8 @@ use log::warn;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::network::resolve_relative;
 use crate::Vec2d;
+use crate::network::resolve_relative;
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ImageInfo {

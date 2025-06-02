@@ -6,7 +6,7 @@ use regex::Regex;
 
 use crate::dezoomer::Dezoomer;
 
-use super::{auto, stdin_line, Vec2d, ZoomError};
+use super::{Vec2d, ZoomError, auto, stdin_line};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, disable_help_flag = true)]
