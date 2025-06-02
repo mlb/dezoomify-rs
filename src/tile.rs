@@ -39,7 +39,7 @@ impl Tile {
 
                 // Extract ICC profile before loading the image
                 let icc_profile = extract_icc_profile(&transformed_bytes).unwrap_or(None);
-                
+
                 Ok(Tile {
                     image: image::load_from_memory(&transformed_bytes)?,
                     position: tile_reference.position,
@@ -64,7 +64,7 @@ impl Tile {
 
 fn extract_icc_profile(bytes: &[u8]) -> Result<Option<Vec<u8>>, image::ImageError> {
     let reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
-    
+
     // Try to get a decoder from the reader
     if let Ok(mut decoder) = reader.into_decoder() {
         // Use trait object to call icc_profile method
@@ -126,7 +126,7 @@ mod tests {
     fn test_tile_with_icc_profile() {
         let tile = Tile {
             image: image::DynamicImage::ImageRgb8(
-                ImageBuffer::from_raw(2, 2, vec![255; 12]).unwrap()
+                ImageBuffer::from_raw(2, 2, vec![255; 12]).unwrap(),
             ),
             position: Vec2d { x: 0, y: 0 },
             icc_profile: Some(vec![1, 2, 3, 4]), // Mock ICC profile

@@ -47,10 +47,13 @@ impl Encoder for PngEncoder {
         if self.icc_profile.is_none() && tile.icc_profile.is_some() {
             self.icc_profile = tile.icc_profile.clone();
             if let Some(ref profile) = self.icc_profile {
-                log::debug!("Captured ICC profile from tile (size: {} bytes)", profile.len());
+                log::debug!(
+                    "Captured ICC profile from tile (size: {} bytes)",
+                    profile.len()
+                );
             }
         }
-        
+
         self.pixel_streamer
             .as_mut()
             .expect("tried to add a tile in a finalized image")

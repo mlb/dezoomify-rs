@@ -174,7 +174,14 @@ impl<T: TileSaver> Retiler<T> {
     }
 
     pub fn tile_save(&self, position: Vec2d, size: Vec2d, image: DynamicImage) -> io::Result<()> {
-        self.tile_saver.save_tile(size, Tile { image, position, icc_profile: None })
+        self.tile_saver.save_tile(
+            size,
+            Tile {
+                image,
+                position,
+                icc_profile: None,
+            },
+        )
     }
 
     pub fn level_count(&self) -> u32 {

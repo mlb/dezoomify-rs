@@ -1,6 +1,6 @@
 use image::{
-    ExtendedColorType, GenericImageView, ImageBuffer, ImageEncoder, ImageResult, Pixel, PixelWithColorType, Rgb,
-    Rgba,
+    ExtendedColorType, GenericImageView, ImageBuffer, ImageEncoder, ImageResult, Pixel,
+    PixelWithColorType, Rgb, Rgba,
 };
 use log::debug;
 use std::io;
@@ -67,14 +67,16 @@ impl<Pix: Pixel<Subpixel = u8> + PixelWithColorType + Send + FromRgba + 'static>
 {
     fn add_tile(&mut self, tile: Tile) -> io::Result<()> {
         debug!("Copying tile data from {tile:?}");
-        
+
         // Capture ICC profile from the first tile that has one
         if self.icc_profile.is_none() && tile.icc_profile.is_some() {
             self.icc_profile = tile.icc_profile.clone();
-            debug!("Captured ICC profile from tile (size: {} bytes)", 
-                   self.icc_profile.as_ref().unwrap().len());
+            debug!(
+                "Captured ICC profile from tile (size: {} bytes)",
+                self.icc_profile.as_ref().unwrap().len()
+            );
         }
-        
+
         let min_pos = tile.position();
         let canvas_size = self.size();
         if !min_pos.fits_inside(canvas_size) {
@@ -128,7 +130,7 @@ impl ImageWriter {
                 let file = File::create(destination)?;
                 let fout = &mut BufWriter::new(file);
                 let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(fout, quality);
-                
+
                 // Set ICC profile if available
                 if let Some(profile) = icc_profile {
                     if let Err(e) = encoder.set_icc_profile(profile.clone()) {
@@ -137,7 +139,7 @@ impl ImageWriter {
                         debug!("Applied ICC profile to JPEG output");
                     }
                 }
-                
+
                 encoder.encode(
                     image.as_raw(),
                     image.width(),
@@ -163,8 +165,11 @@ impl ImageWriter {
         destination: &Path,
         icc_profile: &Vec<u8>,
     ) -> ImageResult<()> {
-        let extension = destination.extension().and_then(|s| s.to_str()).unwrap_or("");
-        
+        let extension = destination
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
         match extension.to_lowercase().as_str() {
             "png" => {
                 Self::encode_with_icc_profile::<Pix, image::codecs::png::PngEncoder<BufWriter<File>>>(
@@ -172,27 +177,29 @@ impl ImageWriter {
                     destination,
                     icc_profile,
                     image::codecs::png::PngEncoder::new,
-                    "PNG"
+                    "PNG",
                 )
             }
-            "tiff" | "tif" => {
-                Self::encode_with_icc_profile::<Pix, image::codecs::tiff::TiffEncoder<BufWriter<File>>>(
-                    image,
-                    destination,
-                    icc_profile,
-                    image::codecs::tiff::TiffEncoder::new,
-                    "TIFF"
-                )
-            }
-            "webp" => {
-                Self::encode_with_icc_profile::<Pix, image::codecs::webp::WebPEncoder<BufWriter<File>>>(
-                    image,
-                    destination,
-                    icc_profile,
-                    image::codecs::webp::WebPEncoder::new_lossless,
-                    "WebP"
-                )
-            }
+            "tiff" | "tif" => Self::encode_with_icc_profile::<
+                Pix,
+                image::codecs::tiff::TiffEncoder<BufWriter<File>>,
+            >(
+                image,
+                destination,
+                icc_profile,
+                image::codecs::tiff::TiffEncoder::new,
+                "TIFF",
+            ),
+            "webp" => Self::encode_with_icc_profile::<
+                Pix,
+                image::codecs::webp::WebPEncoder<BufWriter<File>>,
+            >(
+                image,
+                destination,
+                icc_profile,
+                image::codecs::webp::WebPEncoder::new_lossless,
+                "WebP",
+            ),
             _ => {
                 // For other formats, fall back to the standard save method
                 debug!("ICC profile not supported for format: {}", extension);
@@ -215,18 +222,84 @@ impl ImageWriter {
         let file = File::create(destination)?;
         let fout = BufWriter::new(file);
         let mut encoder = encoder_factory(fout);
-        
+
         if let Err(e) = encoder.set_icc_profile(icc_profile.clone()) {
             debug!("Failed to set ICC profile for {}: {}", format_name, e);
         } else {
             debug!("Applied ICC profile to {} output", format_name);
         }
-        
+
         encoder.write_image(
             image.as_raw(),
             image.width(),
             image.height(),
             Pix::COLOR_TYPE.into(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{ImageBuffer, Rgba};
+    use std::env::temp_dir;
+
+    #[test]
+    fn test_canvas_captures_icc_profile() {
+        let destination = temp_dir().join("test_icc_canvas.png");
+        let size = Vec2d { x: 2, y: 2 };
+        let mut canvas = Canvas::<Rgba<u8>>::new_generic(destination, size).unwrap();
+
+        // Verify canvas starts with no ICC profile
+        assert!(canvas.icc_profile.is_none());
+
+        // Add a tile with an ICC profile
+        let tile_with_profile = Tile {
+            image: image::DynamicImage::ImageRgba8(
+                ImageBuffer::from_raw(1, 1, vec![255, 0, 0, 255]).unwrap(),
+            ),
+            position: Vec2d { x: 0, y: 0 },
+            icc_profile: Some(vec![1, 2, 3, 4, 5]), // Mock ICC profile
+        };
+
+        canvas.add_tile(tile_with_profile).unwrap();
+
+        // Verify canvas now has the ICC profile
+        assert!(canvas.icc_profile.is_some());
+        assert_eq!(canvas.icc_profile.unwrap().len(), 5);
+    }
+
+    #[test]
+    fn test_canvas_ignores_later_icc_profiles() {
+        let destination = temp_dir().join("test_icc_priority.png");
+        let size = Vec2d { x: 2, y: 2 };
+        let mut canvas = Canvas::<Rgba<u8>>::new_generic(destination, size).unwrap();
+
+        // Add first tile with ICC profile
+        let first_tile = Tile {
+            image: image::DynamicImage::ImageRgba8(
+                ImageBuffer::from_raw(1, 1, vec![255, 0, 0, 255]).unwrap(),
+            ),
+            position: Vec2d { x: 0, y: 0 },
+            icc_profile: Some(vec![1, 2, 3]), // First ICC profile
+        };
+
+        canvas.add_tile(first_tile).unwrap();
+        let first_profile = canvas.icc_profile.clone();
+
+        // Add second tile with different ICC profile
+        let second_tile = Tile {
+            image: image::DynamicImage::ImageRgba8(
+                ImageBuffer::from_raw(1, 1, vec![0, 255, 0, 255]).unwrap(),
+            ),
+            position: Vec2d { x: 1, y: 0 },
+            icc_profile: Some(vec![4, 5, 6, 7]), // Different ICC profile
+        };
+
+        canvas.add_tile(second_tile).unwrap();
+
+        // Verify canvas still has the first ICC profile
+        assert_eq!(canvas.icc_profile, first_profile);
+        assert_eq!(canvas.icc_profile.unwrap().len(), 3);
     }
 }
