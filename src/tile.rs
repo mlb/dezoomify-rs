@@ -43,14 +43,13 @@ impl Tile {
                     bytes
                 };
 
-                let (image, icc_profile, exif_metadata) =
-                    load_image_with_metadata(&transformed_bytes)?;
+                let image_with_metadata = load_image_with_metadata(&transformed_bytes)?;
 
                 Ok(Tile {
-                    image,
+                    image: image_with_metadata.image,
                     position: tile_reference.position,
-                    icc_profile,
-                    exif_metadata,
+                    icc_profile: image_with_metadata.icc_profile,
+                    exif_metadata: image_with_metadata.exif_metadata,
                 })
             })
         })
@@ -113,7 +112,15 @@ impl TileBuilder {
     }
 }
 
-type MetadataResult = Result<(DynamicImage, Option<Vec<u8>>, Option<Vec<u8>>), image::ImageError>;
+/// Represents an image loaded with its associated metadata
+#[derive(Debug)]
+struct ImageWithMetadata {
+    image: DynamicImage,
+    icc_profile: Option<Vec<u8>>,
+    exif_metadata: Option<Vec<u8>>,
+}
+
+type MetadataResult = Result<ImageWithMetadata, image::ImageError>;
 
 fn load_image_with_metadata(bytes: &[u8]) -> MetadataResult {
     let reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
@@ -135,11 +142,19 @@ fn load_image_with_metadata(bytes: &[u8]) -> MetadataResult {
         // Then decode the image using the same decoder
         let image = DynamicImage::from_decoder(decoder)?;
 
-        Ok((image, icc_profile, exif_metadata))
+        Ok(ImageWithMetadata {
+            image,
+            icc_profile,
+            exif_metadata,
+        })
     } else {
         // Fallback to standard loading without metadata
         let image = image::load_from_memory(bytes)?;
-        Ok((image, None, None))
+        Ok(ImageWithMetadata {
+            image,
+            icc_profile: None,
+            exif_metadata: None,
+        })
     }
 }
 
