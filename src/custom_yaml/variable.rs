@@ -1,4 +1,4 @@
-use evalexpr::{ContextWithMutableVariables, HashMapContext, DefaultNumericTypes};
+use evalexpr::{ContextWithMutableVariables, DefaultNumericTypes, HashMapContext};
 use itertools::Itertools;
 use regex::Regex;
 use serde::Deserialize;
@@ -152,7 +152,8 @@ impl Variables {
     }
     pub fn iter_contexts(
         &self,
-    ) -> impl Iterator<Item = Result<HashMapContext<DefaultNumericTypes>, BadVariableError>> + '_ {
+    ) -> impl Iterator<Item = Result<HashMapContext<DefaultNumericTypes>, BadVariableError>> + '_
+    {
         self.0
             .iter()
             .map(|variable| variable.into_iter().map(move |val| (variable.name(), val)))
