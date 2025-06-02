@@ -8,16 +8,22 @@ use custom_error::custom_error;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct TileInfo {
+    #[serde(rename = "@tile_width")]
     pub tile_width: u32,
+    #[serde(rename = "@tile_height")]
     pub tile_height: u32,
     pub pyramid_level: Vec<PyramidLevel>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct PyramidLevel {
+    #[serde(rename = "@num_tiles_x")]
     pub num_tiles_x: u32,
+    #[serde(rename = "@num_tiles_y")]
     pub num_tiles_y: u32,
+    #[serde(rename = "@empty_pels_x")]
     pub empty_pels_x: u32,
+    #[serde(rename = "@empty_pels_y")]
     pub empty_pels_y: u32,
 }
 

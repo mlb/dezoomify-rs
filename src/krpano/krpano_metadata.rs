@@ -7,9 +7,9 @@ use crate::Vec2d;
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Default)]
 pub struct KrpanoMetadata {
-    #[serde(rename = "$value")]
+    #[serde(rename = "#content")]
     children: Vec<TopLevelTags>,
-    #[serde(default)]
+    #[serde(default, rename = "@name")]
     name: String,
 }
 
@@ -47,7 +47,7 @@ enum TopLevelTags {
     Image(KrpanoImage),
     Scene(KrpanoMetadata),
     SourceDetails {
-        #[serde(default)]
+        #[serde(default, rename = "@subject")]
         subject: String,
     },
     Data(String),
@@ -86,10 +86,11 @@ struct KrpanoMetaData<'a> {
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct KrpanoImage {
+    #[serde(rename = "@tilesize")]
     pub tilesize: Option<u32>,
-    #[serde(default = "default_base_index")]
+    #[serde(default = "default_base_index", rename = "@baseindex")]
     pub baseindex: u32,
-    #[serde(rename = "$value")]
+    #[serde(rename = "#content")]
     pub level: Vec<KrpanoLevel>,
 }
 
@@ -107,15 +108,19 @@ pub struct LevelDesc {
 
 #[derive(Deserialize, PartialEq, Eq, Debug)]
 pub struct ShapeDesc {
+    #[serde(rename = "@url")]
     url: TemplateString<TemplateVariable>,
+    #[serde(rename = "@multires")]
     multires: Option<String>,
 }
 
 #[derive(Deserialize, PartialEq, Eq, Debug)]
 pub struct LevelAttributes {
+    #[serde(rename = "@tiledimagewidth")]
     tiledimagewidth: u32,
+    #[serde(rename = "@tiledimageheight")]
     tiledimageheight: u32,
-    #[serde(rename = "$value")]
+    #[serde(rename = "#content")]
     shape: Vec<KrpanoLevel>,
 }
 

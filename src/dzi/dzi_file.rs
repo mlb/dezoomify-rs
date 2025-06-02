@@ -10,15 +10,24 @@ use super::DziError;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct DziFile {
-    #[serde(rename = "Overlap", deserialize_with = "number_or_string", default)]
+    #[serde(
+        rename = "@Overlap",
+        alias = "Overlap",
+        deserialize_with = "number_or_string",
+        default
+    )]
     pub overlap: u32,
-    #[serde(rename = "TileSize", deserialize_with = "number_or_string")]
+    #[serde(
+        rename = "@TileSize",
+        alias = "TileSize",
+        deserialize_with = "number_or_string"
+    )]
     pub tile_size: u32,
-    #[serde(rename = "Format")]
+    #[serde(rename = "@Format", alias = "Format")]
     pub format: String,
     #[serde(rename = "Size")]
     pub size: Size,
-    #[serde(rename = "Url")]
+    #[serde(rename = "@Url", alias = "Url")]
     pub base_url: Option<String>,
 }
 
@@ -57,9 +66,19 @@ fn log2(n: u32) -> u32 {
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Default)]
 pub struct Size {
-    #[serde(rename = "Width", deserialize_with = "number_or_string", default)]
+    #[serde(
+        rename = "@Width",
+        alias = "Width",
+        deserialize_with = "number_or_string",
+        default
+    )]
     pub width: u32,
-    #[serde(rename = "Height", deserialize_with = "number_or_string", default)]
+    #[serde(
+        rename = "@Height",
+        alias = "Height",
+        deserialize_with = "number_or_string",
+        default
+    )]
     pub height: u32,
 }
 

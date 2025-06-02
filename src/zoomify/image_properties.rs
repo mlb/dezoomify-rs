@@ -6,13 +6,13 @@ use std::convert::TryInto;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ImageProperties {
-    #[serde(rename = "WIDTH", default)]
+    #[serde(rename = "@WIDTH", default)]
     pub width: u32,
-    #[serde(rename = "HEIGHT", default)]
+    #[serde(rename = "@HEIGHT", default)]
     pub height: u32,
-    #[serde(rename = "TILESIZE", default)]
+    #[serde(rename = "@TILESIZE", default)]
     pub tile_size: u32,
-    #[serde(rename = "NUMTILES", default)]
+    #[serde(rename = "@NUMTILES", default)]
     pub num_tiles: u32,
 }
 

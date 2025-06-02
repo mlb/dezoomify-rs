@@ -25,17 +25,17 @@ where
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
 pub struct PffHeader {
-    #[serde(rename = "WIDTH", default)]
+    #[serde(rename = "@WIDTH", default)]
     pub width: u32,
-    #[serde(rename = "HEIGHT", default)]
+    #[serde(rename = "@HEIGHT", default)]
     pub height: u32,
-    #[serde(rename = "TILESIZE", default)]
+    #[serde(rename = "@TILESIZE", default)]
     pub tile_size: u32,
-    #[serde(rename = "NUMTILES", default)]
+    #[serde(rename = "@NUMTILES", default)]
     pub num_tiles: u32,
-    #[serde(rename = "HEADERSIZE", default)]
+    #[serde(rename = "@HEADERSIZE", default)]
     pub header_size: u64,
-    #[serde(rename = "VERSION", default)]
+    #[serde(rename = "@VERSION", default)]
     pub version: u32,
 }
 

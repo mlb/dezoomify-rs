@@ -7,7 +7,6 @@ use dzi_file::DziFile;
 
 use crate::dezoomer::*;
 use crate::json_utils::all_json;
-use crate::network::remove_bom;
 use regex::Regex;
 mod dzi_file;
 
@@ -51,9 +50,7 @@ impl From<DziError> for DezoomerError {
 }
 
 fn load_from_properties(url: &str, contents: &[u8]) -> Result<ZoomLevels, DziError> {
-    // Workaround for https://github.com/netvl/xml-rs/issues/155
-    // which the original author seems unwilling to fix
-    serde_xml_rs::from_reader::<_, DziFile>(remove_bom(contents))
+    serde_xml_rs::from_reader::<'_, DziFile, _>(contents)
         .map_err(DziError::from)
         .and_then(|dzi| load_from_dzi(url, dzi))
         .or_else(|e| {

@@ -196,17 +196,6 @@ pub fn resolve_relative(base: &str, path: &str) -> String {
     res.to_string_lossy().to_string()
 }
 
-pub fn remove_bom(contents: &[u8]) -> &[u8] {
-    // Workaround for https://github.com/netvl/xml-rs/issues/155
-    // which the original author seems unwilling to fix
-    const BOM: &[u8] = &[0xEF, 0xBB, 0xBF]; // UTF8 byte order mark
-    if contents.starts_with(BOM) {
-        &contents[BOM.len()..]
-    } else {
-        contents
-    }
-}
-
 #[test]
 fn test_resolve_relative() {
     use std::path::MAIN_SEPARATOR;

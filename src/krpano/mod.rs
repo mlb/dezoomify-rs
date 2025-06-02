@@ -8,7 +8,7 @@ use krpano_metadata::{KrpanoMetadata, TemplateString, TemplateStringPart, XY};
 
 use crate::dezoomer::*;
 use crate::krpano::krpano_metadata::{ImageInfo, LevelDesc};
-use crate::network::{remove_bom, resolve_relative};
+use crate::network::resolve_relative;
 
 mod krpano_metadata;
 
@@ -40,7 +40,7 @@ impl From<KrpanoError> for DezoomerError {
 }
 
 fn load_from_properties(url: &str, contents: &[u8]) -> Result<ZoomLevels, KrpanoError> {
-    let image_properties: KrpanoMetadata = serde_xml_rs::from_reader(remove_bom(contents))?;
+    let image_properties: KrpanoMetadata = serde_xml_rs::from_reader(contents)?;
     let base_url = &Arc::from(url);
     let title: &Arc<str> = &Arc::from(image_properties.get_title().unwrap_or(""));
     Ok(image_properties
