@@ -92,12 +92,11 @@ fn level_picker(mut levels: Vec<ZoomLevel>) -> Result<ZoomLevel, ZoomError> {
     loop {
         println!("Which level do you want to download? ");
         let line = stdin_line()?;
-        if let Ok(idx) = line.parse::<usize>() {
-            if levels.get(idx).is_some() {
+        if let Ok(idx) = line.parse::<usize>()
+            && levels.get(idx).is_some() {
                 return Ok(levels.swap_remove(idx));
             }
-        }
-        println!("'{}' is not a valid level number", line);
+        println!("'{line}' is not a valid level number");
     }
 }
 
@@ -205,7 +204,7 @@ pub async fn dezoomify_level(
         }
 
         while let Some(tile_result) = stream.next().await {
-            debug!("Received tile result: {:?}", tile_result);
+            debug!("Received tile result: {tile_result:?}");
             progress.inc(1);
             let tile = match tile_result {
                 Ok(tile) => {

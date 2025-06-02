@@ -53,7 +53,7 @@ impl TileProvider for CustomYamlTiles {
         match tiles_result {
             Ok(tiles) => tiles,
             Err(err) => {
-                log::error!("Invalid tiles.yaml file: {}\n", err);
+                log::error!("Invalid tiles.yaml file: {err}\n");
                 vec![]
             }
         }

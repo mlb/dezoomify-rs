@@ -63,7 +63,7 @@ impl<Pix: Pixel<Subpixel = u8> + PixelWithColorType + Send + FromRgba + 'static>
     for Canvas<Pix>
 {
     fn add_tile(&mut self, tile: Tile) -> io::Result<()> {
-        debug!("Copying tile data from {:?}", tile);
+        debug!("Copying tile data from {tile:?}");
         let min_pos = tile.position();
         let canvas_size = self.size();
         if !min_pos.fits_inside(canvas_size) {
@@ -90,7 +90,7 @@ impl<Pix: Pixel<Subpixel = u8> + PixelWithColorType + Send + FromRgba + 'static>
             .write(&self.image, &self.destination)
             .map_err(|e| match e {
                 image::ImageError::IoError(e) => e,
-                other => io::Error::new(io::ErrorKind::Other, other),
+                other => io::Error::other(other),
             })?;
         Ok(())
     }

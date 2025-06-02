@@ -106,7 +106,7 @@ impl std::fmt::Display for AutoDezoomerError {
             "Tried all of the dezoomers, none succeeded. They returned the following errors:\n"
         )?;
         for (dezoomer_name, err) in self.0.iter() {
-            writeln!(f, " - {}: {}", dezoomer_name, err)?;
+            writeln!(f, " - {dezoomer_name}: {err}")?;
         }
         writeln!(
             f,

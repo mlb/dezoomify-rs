@@ -45,9 +45,9 @@ impl TileBuffer {
                 compression,
             } => {
                 let destination = std::mem::take(destination);
-                debug!("Creating a tile writer for an image of size {}", size);
+                debug!("Creating a tile writer for an image of size {size}");
                 let mut encoder = encoder_for_name(destination.clone(), size, *compression)?;
-                debug!("Adding buffered tiles: {:?}", buffer);
+                debug!("Adding buffered tiles: {buffer:?}");
                 for tile in buffer.drain(..) {
                     encoder.add_tile(tile)?;
                 }
@@ -122,10 +122,10 @@ async fn buffer_tiles(mut encoder: Box<dyn Encoder>, destination: PathBuf) -> Ti
         while let Some(msg) = tile_receiver.recv().await {
             match msg {
                 TileBufferMsg::AddTile(tile) => {
-                    debug!("Sending tile to encoder: {:?}", tile);
+                    debug!("Sending tile to encoder: {tile:?}");
                     let result = tokio::task::block_in_place(|| encoder.add_tile(tile));
                     if let Err(err) = result {
-                        warn!("Error when adding tile: {}", err);
+                        warn!("Error when adding tile: {err}");
                         error_sender.send(err).await.expect("could not send error");
                     }
                 }
@@ -136,7 +136,7 @@ async fn buffer_tiles(mut encoder: Box<dyn Encoder>, destination: PathBuf) -> Ti
         }
         debug!("Finalizing the encoder");
         if let Err(err) = encoder.finalize() {
-            warn!("Error when finalizing image: {}", err);
+            warn!("Error when finalizing image: {err}");
             error_sender.send(err).await.expect("could not send error");
         }
     });

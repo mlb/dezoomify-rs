@@ -76,7 +76,7 @@ impl<W: Write> PixelStreamer<W> {
     pub fn fill_blank(&mut self, until: usize) -> io::Result<()> {
         if until > self.current_index {
             let remaining = until - self.current_index;
-            debug!("Filling incomplete image with {} pixels", remaining);
+            debug!("Filling incomplete image with {remaining} pixels");
             let blank = vec![0; remaining * BYTES_PER_PIXEL];
             self.writer.write_all(&blank)?;
             self.current_index = until;

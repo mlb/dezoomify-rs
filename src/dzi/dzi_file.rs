@@ -55,7 +55,7 @@ impl DziFile {
             } else {
                 resource_url
             };
-            format!("{}_files", until_dot)
+            format!("{until_dot}_files")
         }
     }
 }

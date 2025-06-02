@@ -69,7 +69,7 @@ impl Encoder for IiifEncoder {
         let info_json_str = serde_json::to_string(&image_info)?;
         let info_json_path = self.root_path.join("info.json");
         let viewer_path = self.root_path.join("viewer.html");
-        debug!("Writing iiif metadata to {:?}", info_json_path);
+        debug!("Writing iiif metadata to {info_json_path:?}");
         OpenOptions::new()
             .write(true)
             .create(true)
@@ -77,7 +77,7 @@ impl Encoder for IiifEncoder {
             .open(info_json_path)?
             .write_all(info_json_str.as_bytes())?;
 
-        debug!("Writing viewer page to {:?}", viewer_path);
+        debug!("Writing viewer page to {viewer_path:?}");
         let viewer_buf = include_str!("./viewer_files/viewer.html")
             .replace(
                 "/*DEZOOMIFY_SEADRAGON*/",
@@ -118,7 +118,7 @@ impl TileSaver for IIIFTileSaver {
         image_dir_path.push(tile_size_str);
         image_dir_path.push(rotation);
         let image_path = image_dir_path.join(filename);
-        debug!("Writing tile to {:?}", image_path);
+        debug!("Writing tile to {image_path:?}");
         std::fs::create_dir_all(&image_dir_path)?;
         let file = &mut BufWriter::new(File::create(&image_path)?);
         let jpeg_writer = JpegEncoder::new_with_quality(file, self.quality);

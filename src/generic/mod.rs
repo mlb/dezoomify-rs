@@ -78,7 +78,7 @@ impl ZoomLevel {
                     .name("zeroes")
                     .and_then(|m| m.as_str().parse().ok())
                     .unwrap_or(0);
-                format!("{num:0padding$}", num = num, padding = padding)
+                format!("{num:0padding$}")
             })
             .to_string()
     }

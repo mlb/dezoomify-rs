@@ -48,7 +48,7 @@ impl Dezoomer for NYPLImage {
                     url: image_view_url.to_string(),
                 })
             })?;
-            let meta_uri = format!("{}{}{}", NYPL_META_PREFIX, image_id, NYPL_META_POSTFIX);
+            let meta_uri = format!("{NYPL_META_PREFIX}{image_id}{NYPL_META_POSTFIX}");
             Err(DezoomerError::NeedsData { uri: meta_uri })
         } else {
             self.assert(data.uri.contains(NYPL_META_PREFIX))?;

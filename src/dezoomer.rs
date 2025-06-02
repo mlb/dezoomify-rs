@@ -28,7 +28,7 @@ impl std::fmt::Debug for PageContents {
         match self {
             Self::Unknown => f.write_str("<not yet available>"),
             Success(contents) => f.write_str(&String::from_utf8_lossy(contents)),
-            PageContents::Error(e) => write!(f, "{}", e),
+            PageContents::Error(e) => write!(f, "{e}"),
         }
     }
 }
@@ -135,7 +135,7 @@ pub trait TileProvider: Debug {
 
     /// The name of the format
     fn name(&self) -> String {
-        format!("{:?}", self)
+        format!("{self:?}")
     }
 
     /// The title of the image

@@ -56,7 +56,7 @@ fn load_from_properties(url: &str, contents: &[u8]) -> Result<ZoomLevels, Krpano
                     .flat_map(move |level_desc| {
                         let name = Arc::clone(&name);
                         level_desc
-                            .map_err(|err| warn!("bad krpano level: {}", err))
+                            .map_err(|err| warn!("bad krpano level: {err}"))
                             .into_iter()
                             .flat_map(
                                 move |LevelDesc {

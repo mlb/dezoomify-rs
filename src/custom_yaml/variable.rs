@@ -79,7 +79,7 @@ impl Iterator for VariableIterator {
     }
 }
 
-impl<'a> IntoIterator for &'a Variable {
+impl IntoIterator for &Variable {
     type Item = i64;
     type IntoIter = VariableIterator;
 
@@ -125,7 +125,7 @@ impl VarOrConst {
     }
 }
 
-impl<'a> IntoIterator for &'a VarOrConst {
+impl IntoIterator for &VarOrConst {
     type Item = i64;
     type IntoIter = VariableIterator;
 

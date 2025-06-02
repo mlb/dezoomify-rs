@@ -67,7 +67,7 @@ fn load_from_properties(url: &str, contents: &[u8]) -> Result<ZoomLevels, DziErr
 }
 
 fn load_from_dzi(url: &str, image_properties: DziFile) -> Result<ZoomLevels, DziError> {
-    debug!("Found dzi meta-information: {:?}", image_properties);
+    debug!("Found dzi meta-information: {image_properties:?}");
 
     if image_properties.tile_size == 0 {
         return Err(DziError::InvalidTileSize);

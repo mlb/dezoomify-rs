@@ -109,8 +109,7 @@ impl<T: TileSaver> Retiler<T> {
 
             let tmp_tile_entry = self.tiles.entry(cur_pos).or_insert_with(|| {
                 debug!(
-                    "Creating a new partial tile at scale factor {} position {} size {}",
-                    scale_factor, cur_pos, cur_tile_size
+                    "Creating a new partial tile at scale factor {scale_factor} position {cur_pos} size {cur_tile_size}"
                 );
                 Some(TmpTile::new(scaled_tile_size))
             });
@@ -163,8 +162,7 @@ impl<T: TileSaver> Retiler<T> {
                 if let Err(e) = result {
                     warn!(
                         "Additionally, the following error occurred \
-                when trying to add the partial tile to the final image: {}",
-                        e
+                when trying to add the partial tile to the final image: {e}"
                     )
                 }
             }
@@ -250,8 +248,7 @@ impl TmpTile {
             Ok(Some(tile_img))
         } else {
             debug!(
-                "Writing partly-filled tile of level {} at position {}",
-                level_size, self_position
+                "Writing partly-filled tile of level {level_size} at position {self_position}"
             );
             tile_img
                 .save(&tmp_tile_path)

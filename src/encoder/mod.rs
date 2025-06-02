@@ -45,7 +45,7 @@ fn encoder_for_name(
             quality,
         )?))
     } else if extension == "jpeg" || extension == "jpg" {
-        debug!("Using the jpeg encoder with a quality of {}", quality);
+        debug!("Using the jpeg encoder with a quality of {quality}");
         Ok(Box::new(canvas::Canvas::<Rgb<u8>>::new_jpeg(
             destination,
             size,

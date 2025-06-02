@@ -14,7 +14,7 @@ pub fn compute_url(page: &PageInfo, x: u32, y: u32, z: usize) -> String {
 
     let mut sign_path: Vec<u8> = Vec::new();
     sign_path.extend_from_slice(page.path().as_bytes());
-    write!(sign_path, "=x{}-y{}-z{}-t", x, y, z).unwrap();
+    write!(sign_path, "=x{x}-y{y}-z{z}-t").unwrap();
     sign_path.extend_from_slice(page.token.as_bytes());
 
     let digest = mac_digest(&sign_path);

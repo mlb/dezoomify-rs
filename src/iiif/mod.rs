@@ -52,11 +52,10 @@ fn zoom_levels(url: &str, raw_info: &[u8]) -> Result<ZoomLevels, IIIFError> {
                     let keep = info.has_distinctive_iiif_properties();
                     if keep {
                         debug!(
-                            "keeping image info {:?} because it has distinctive IIIF properties",
-                            info
+                            "keeping image info {info:?} because it has distinctive IIIF properties"
                         )
                     } else {
-                        info!("dropping level {:?}", info)
+                        info!("dropping level {info:?}")
                     }
                     keep
                 })
@@ -83,7 +82,8 @@ fn zoom_levels_from_info(url: &str, mut image_info: ImageInfo) -> ZoomLevels {
     let img = Arc::new(image_info);
     let tiles = img.tiles();
     let base_url = &Arc::from(url.replace("/info.json", ""));
-    let levels = tiles
+    
+    tiles
         .iter()
         .flat_map(|tile_info| {
             let tile_size = tile_info.size();
@@ -91,8 +91,7 @@ fn zoom_levels_from_info(url: &str, mut image_info: ImageInfo) -> ZoomLevels {
             let format = Arc::from(img.best_format());
             let size_format = img.preferred_size_format();
             info!(
-                "Chose the following image parameters: tile_size=({}) quality={} format={}",
-                tile_size, quality, format
+                "Chose the following image parameters: tile_size=({tile_size}) quality={quality} format={format}"
             );
             let page_info = &img; // Required to allow the move
             tile_info.scale_factors.iter().map(move |&scale_factor| {
@@ -109,8 +108,7 @@ fn zoom_levels_from_info(url: &str, mut image_info: ImageInfo) -> ZoomLevels {
                 zoom_level
             })
         })
-        .into_zoom_levels();
-    levels
+        .into_zoom_levels()
 }
 
 struct IIIFZoomLevel {
@@ -180,13 +178,13 @@ impl std::fmt::Debug for IIIFZoomLevel {
         let name = self
             .base_url
             .split('/')
-            .last()
+            .next_back()
             .and_then(|s: &str| {
                 let s = s.trim();
                 if s.is_empty() { None } else { Some(s) }
             })
             .unwrap_or("IIIF Image");
-        write!(f, "{}", name)
+        write!(f, "{name}")
     }
 }
 

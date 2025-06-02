@@ -63,5 +63,5 @@ pub fn make_io_err<E>(e: E) -> std::io::Error
 where
     E: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
-    std::io::Error::new(std::io::ErrorKind::Other, e)
+    std::io::Error::other(e)
 }

@@ -38,12 +38,12 @@ pub async fn fetch_uri(uri: &str, http: &Client) -> Result<Vec<u8>, ZoomError> {
         let mut contents = Vec::new();
         let bytes = response.bytes().await?;
         contents.extend(bytes);
-        trace!("Successfully finished loading url: '{}'", uri);
+        trace!("Successfully finished loading url: '{uri}'");
         Ok(contents)
     } else {
-        debug!("Loading file: '{}'", uri);
+        debug!("Loading file: '{uri}'");
         let result = fs::read(uri).await?;
-        debug!("Loaded file: '{}'", uri);
+        debug!("Loaded file: '{uri}'");
         Ok(result)
     }
 }
@@ -86,7 +86,7 @@ impl TileDownloader {
                         });
                     }
                     failures += 1;
-                    warn!("{}. Retrying tile download in {:?}.", cause, wait_time);
+                    warn!("{cause}. Retrying tile download in {wait_time:?}.");
                     tokio::time::sleep(wait_time).await;
                     wait_time *= 2;
                 }
@@ -130,8 +130,7 @@ impl TileDownloader {
             match tokio::fs::write(root.join(sanitize(uri)), contents).await {
                 Ok(_) => debug!("Wrote {} to tile cache ({} bytes)", uri, contents.len()),
                 Err(e) => warn!(
-                    "Unable to write {} to the tile cache {:?}: {}",
-                    uri, root, e
+                    "Unable to write {uri} to the tile cache {root:?}: {e}"
                 ),
             }
         }
@@ -141,10 +140,10 @@ impl TileDownloader {
         if let Some(root) = &self.tile_storage_folder {
             match tokio::fs::read(root.join(sanitize(uri))).await {
                 Ok(d) => {
-                    debug!("{} read from tile cache", uri);
+                    debug!("{uri} read from tile cache");
                     return Some(d);
                 }
-                Err(e) => debug!("Unable to open {} from tile cache {:?}: {}", uri, root, e),
+                Err(e) => debug!("Unable to open {uri} from tile cache {root:?}: {e}"),
             }
         }
         None
@@ -165,8 +164,7 @@ pub fn client<'a, I: Iterator<Item = (&'a String, &'a String)>>(
         .map(|(name, value)| Ok((name.parse()?, value.parse()?)))
         .collect::<Result<header::HeaderMap, ZoomError>>()?;
     debug!(
-        "Creating an http client with the following headers: {:?}",
-        header_map
+        "Creating an http client with the following headers: {header_map:?}"
     );
     let client = reqwest::Client::builder()
         .http1_title_case_headers()
@@ -186,11 +184,10 @@ pub fn default_headers() -> HashMap<String, String> {
 pub fn resolve_relative(base: &str, path: &str) -> String {
     if Url::parse(path).is_ok() {
         return path.to_string();
-    } else if let Ok(url) = Url::parse(base) {
-        if let Ok(r) = url.join(path) {
+    } else if let Ok(url) = Url::parse(base)
+        && let Ok(r) = url.join(path) {
             return r.to_string();
         }
-    }
     let mut res = PathBuf::from(base.rsplitn(2, '/').last().unwrap_or_default());
     res.push(path);
     res.to_string_lossy().to_string()

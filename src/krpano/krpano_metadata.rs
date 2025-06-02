@@ -281,8 +281,8 @@ impl FromStr for TemplateString<TemplateVariable> {
                     variable: LevelIndex,
                 },
                 Some('%') => Literal(Arc::from("%")),
-                Some(x) => return Err(format!("Unknown template variable '{}' in '{}'", x, input)),
-                None => return Err(format!("Invalid templating syntax in '{}'", input)),
+                Some(x) => return Err(format!("Unknown template variable '{x}' in '{input}'")),
+                None => return Err(format!("Invalid templating syntax in '{input}'")),
             });
         }
         Ok(TemplateString(parts))
@@ -342,7 +342,7 @@ impl TemplateStringPart<TemplateVariable> {
                     },
                     Side => Literal(Arc::from(&side[..1])),
                     LevelIndex => {
-                        let idx_str = format!("{v:0padding$}", v = level, padding = padding);
+                        let idx_str = format!("{level:0padding$}");
                         Literal(Arc::from(idx_str))
                     }
                 }
