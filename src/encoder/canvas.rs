@@ -254,13 +254,13 @@ mod tests {
         assert!(canvas.icc_profile.is_none());
 
         // Add a tile with an ICC profile
-        let tile_with_profile = Tile {
-            image: image::DynamicImage::ImageRgba8(
+        let tile_with_profile = Tile::builder()
+            .with_image(image::DynamicImage::ImageRgba8(
                 ImageBuffer::from_raw(1, 1, vec![255, 0, 0, 255]).unwrap(),
-            ),
-            position: Vec2d { x: 0, y: 0 },
-            icc_profile: Some(vec![1, 2, 3, 4, 5]), // Mock ICC profile
-        };
+            ))
+            .at_position(Vec2d { x: 0, y: 0 })
+            .with_icc_profile(vec![1, 2, 3, 4, 5])
+            .build();
 
         canvas.add_tile(tile_with_profile).unwrap();
 
@@ -276,25 +276,25 @@ mod tests {
         let mut canvas = Canvas::<Rgba<u8>>::new_generic(destination, size).unwrap();
 
         // Add first tile with ICC profile
-        let first_tile = Tile {
-            image: image::DynamicImage::ImageRgba8(
+        let first_tile = Tile::builder()
+            .with_image(image::DynamicImage::ImageRgba8(
                 ImageBuffer::from_raw(1, 1, vec![255, 0, 0, 255]).unwrap(),
-            ),
-            position: Vec2d { x: 0, y: 0 },
-            icc_profile: Some(vec![1, 2, 3]), // First ICC profile
-        };
+            ))
+            .at_position(Vec2d { x: 0, y: 0 })
+            .with_icc_profile(vec![1, 2, 3])
+            .build();
 
         canvas.add_tile(first_tile).unwrap();
         let first_profile = canvas.icc_profile.clone();
 
         // Add second tile with different ICC profile
-        let second_tile = Tile {
-            image: image::DynamicImage::ImageRgba8(
+        let second_tile = Tile::builder()
+            .with_image(image::DynamicImage::ImageRgba8(
                 ImageBuffer::from_raw(1, 1, vec![0, 255, 0, 255]).unwrap(),
-            ),
-            position: Vec2d { x: 1, y: 0 },
-            icc_profile: Some(vec![4, 5, 6, 7]), // Different ICC profile
-        };
+            ))
+            .at_position(Vec2d { x: 1, y: 0 })
+            .with_icc_profile(vec![4, 5, 6, 7])
+            .build();
 
         canvas.add_tile(second_tile).unwrap();
 

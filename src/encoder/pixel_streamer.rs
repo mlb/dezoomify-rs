@@ -147,9 +147,9 @@ mod tests {
 
     fn tiles(i: usize) -> Tile {
         [
-            Tile {
-                position: Vec2d { x: 0, y: 0 },
-                image: DynamicImage::ImageRgb8(
+            Tile::builder()
+                .at_position(Vec2d { x: 0, y: 0 })
+                .with_image(DynamicImage::ImageRgb8(
                     ImageBuffer::from_raw(
                         2,
                         2,
@@ -159,12 +159,11 @@ mod tests {
                         ],
                     )
                     .unwrap(),
-                ),
-                icc_profile: None,
-            },
-            Tile {
-                position: Vec2d { x: 2, y: 0 },
-                image: DynamicImage::ImageRgb8(
+                ))
+                .build(),
+            Tile::builder()
+                .at_position(Vec2d { x: 2, y: 0 })
+                .with_image(DynamicImage::ImageRgb8(
                     ImageBuffer::from_raw(
                         2,
                         4,
@@ -176,12 +175,11 @@ mod tests {
                         ],
                     )
                     .unwrap(),
-                ),
-                icc_profile: None,
-            },
-            Tile {
-                position: Vec2d { x: 0, y: 2 },
-                image: DynamicImage::ImageRgb8(
+                ))
+                .build(),
+            Tile::builder()
+                .at_position(Vec2d { x: 0, y: 2 })
+                .with_image(DynamicImage::ImageRgb8(
                     ImageBuffer::from_raw(
                         2,
                         2,
@@ -191,12 +189,11 @@ mod tests {
                         ],
                     )
                     .unwrap(),
-                ),
-                icc_profile: None,
-            },
-            Tile {
-                position: Vec2d { x: 1, y: 0 },
-                image: DynamicImage::ImageRgb8(
+                ))
+                .build(),
+            Tile::builder()
+                .at_position(Vec2d { x: 1, y: 0 })
+                .with_image(DynamicImage::ImageRgb8(
                     ImageBuffer::from_raw(
                         2,
                         1,
@@ -205,9 +202,8 @@ mod tests {
                         ],
                     )
                     .unwrap(),
-                ),
-                icc_profile: None,
-            },
+                ))
+                .build(),
         ][i]
             .clone()
     }

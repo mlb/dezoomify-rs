@@ -95,13 +95,17 @@ impl<T: TileSaver> Retiler<T> {
         let scaled_tile = if scale_factor == 1 {
             None
         } else {
-            Some(Tile {
-                position: scaled_top_left,
-                image: tile
-                    .image
-                    .resize_exact(scaled_size.x, scaled_size.y, FilterType::Gaussian),
-                icc_profile: tile.icc_profile.clone(),
-            })
+            Some(
+                Tile::builder()
+                    .at_position(scaled_top_left)
+                    .with_image(tile.image.resize_exact(
+                        scaled_size.x,
+                        scaled_size.y,
+                        FilterType::Gaussian,
+                    ))
+                    .with_icc_profile(tile.icc_profile.clone().unwrap_or_default())
+                    .build(),
+            )
         };
         let scaled_tile = scaled_tile.as_ref().unwrap_or(tile);
         for cur_pos in covered_tiles_positions {
@@ -176,11 +180,10 @@ impl<T: TileSaver> Retiler<T> {
     pub fn tile_save(&self, position: Vec2d, size: Vec2d, image: DynamicImage) -> io::Result<()> {
         self.tile_saver.save_tile(
             size,
-            Tile {
-                image,
-                position,
-                icc_profile: None,
-            },
+            Tile::builder()
+                .with_image(image)
+                .at_position(position)
+                .build(),
         )
     }
 
@@ -334,18 +337,20 @@ mod tests {
         let tile_saver = Arc::new(TestTileSaver::default());
         let mut retiler = Retiler::new(image_size, tile_size, Arc::clone(&tile_saver), 1);
         retiler
-            .add_tile(&Tile {
-                image: plain_image(Vec2d { x: 2, y: 1 }, 64),
-                position: Vec2d { x: 0, y: 0 },
-                icc_profile: None,
-            })
+            .add_tile(
+                &Tile::builder()
+                    .with_image(plain_image(Vec2d { x: 2, y: 1 }, 64))
+                    .at_position(Vec2d { x: 0, y: 0 })
+                    .build(),
+            )
             .unwrap();
         retiler
-            .add_tile(&Tile {
-                image: plain_image(Vec2d { x: 2, y: 2 }, 16),
-                position: Vec2d { x: 0, y: 1 },
-                icc_profile: None,
-            })
+            .add_tile(
+                &Tile::builder()
+                    .with_image(plain_image(Vec2d { x: 2, y: 2 }, 16))
+                    .at_position(Vec2d { x: 0, y: 1 })
+                    .build(),
+            )
             .unwrap();
         retiler.finalize();
         /* We created the following image :
@@ -375,27 +380,24 @@ mod tests {
                 //   ( covered size , Tile {position in target, size in target, pixels })
                 (
                     Vec2d { x: 2, y: 2 },
-                    Tile {
-                        position: Vec2d { x: 0, y: 0 },
-                        image: expected_first_tile,
-                        icc_profile: None,
-                    }
+                    Tile::builder()
+                        .at_position(Vec2d { x: 0, y: 0 })
+                        .with_image(expected_first_tile)
+                        .build()
                 ),
                 (
                     Vec2d { x: 2, y: 1 },
-                    Tile {
-                        position: Vec2d { x: 0, y: 2 },
-                        image: plain_image(Vec2d { x: 2, y: 1 }, 16),
-                        icc_profile: None,
-                    }
+                    Tile::builder()
+                        .at_position(Vec2d { x: 0, y: 2 })
+                        .with_image(plain_image(Vec2d { x: 2, y: 1 }, 16))
+                        .build()
                 ),
                 (
                     image_size,
-                    Tile {
-                        position: Vec2d { x: 0, y: 0 },
-                        image: expected_zoomed_out_tile,
-                        icc_profile: None,
-                    }
+                    Tile::builder()
+                        .at_position(Vec2d { x: 0, y: 0 })
+                        .with_image(expected_zoomed_out_tile)
+                        .build()
                 ),
             ]
         );

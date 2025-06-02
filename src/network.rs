@@ -72,11 +72,10 @@ impl TileDownloader {
         loop {
             match self.load_image(Arc::clone(&tile_reference)).await {
                 Ok(image) => {
-                    return Ok(Tile {
-                        image,
-                        position: tile_reference.position,
-                        icc_profile: None,
-                    });
+                    return Ok(Tile::builder()
+                        .with_image(image)
+                        .at_position(tile_reference.position)
+                        .build());
                 }
                 Err(cause) => {
                     if failures >= self.retries {
