@@ -11,17 +11,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-20.04]
+        os: [macos-latest, windows-latest, ubuntu-22.04]
         include:
           - os: windows-latest
             binary_path: target/release/dezoomify-rs.exe
           - os: macos-latest
             binary_path: target/release/dezoomify-rs
-          - os: ubuntu-20.04
+          - os: ubuntu-22.04
             binary_path: target/release/dezoomify-rs
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/cache@v3
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -29,7 +29,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo build --release --locked
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: dezoomify-rs ${{ matrix.os }}
           path: ${{ matrix.binary_path }}
@@ -39,13 +39,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
+        uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
       - run: cd 'dezoomify-rs macos-latest' && chmod +x dezoomify-rs && tar --create --file dezoomify-rs-macos.tgz --gzip dezoomify-rs ../README-MACOS.txt
-      - run: cd 'dezoomify-rs ubuntu-20.04' && chmod +x dezoomify-rs && tar --create --file dezoomify-rs-linux.tgz --gzip dezoomify-rs
+      - run: cd 'dezoomify-rs ubuntu-22.04' && chmod +x dezoomify-rs && tar --create --file dezoomify-rs-linux.tgz --gzip dezoomify-rs
       - name: Create Release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
@@ -53,5 +53,5 @@ jobs:
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           files: |
             dezoomify-rs windows-latest/dezoomify-rs.exe
-            dezoomify-rs ubuntu-20.04/dezoomify-rs-linux.tgz
+            dezoomify-rs ubuntu-22.04/dezoomify-rs-linux.tgz
             dezoomify-rs macos-latest/dezoomify-rs-macos.tgz
