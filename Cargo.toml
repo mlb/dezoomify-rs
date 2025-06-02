@@ -41,16 +41,10 @@ log = "0.4"
 env_logger = "0.11"
 url = "2"
 fixedbitset = "0.5"
-
-# See https://github.com/lovasoa/dezoomify-rs/issues/191
-[target.'cfg(target_os = "linux")'.dependencies]
-reqwest = { version = "0.12", features = ["gzip", "zstd", "rustls-tls-native-roots"], default-features = false }
-
-[target.'cfg(not(target_os = "linux"))'.dependencies]
-reqwest = { version = "0.12", features = ["gzip"] }
+reqwest = { version = "0.12", features = ["gzip", "zstd"] }
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.6"
 image_hasher = "1"
 tempdir = "0.3"
 
