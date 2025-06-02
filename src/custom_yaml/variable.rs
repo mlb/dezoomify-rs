@@ -1,4 +1,4 @@
-use evalexpr::{ContextWithMutableVariables, HashMapContext};
+use evalexpr::{ContextWithMutableVariables, HashMapContext, DefaultNumericTypes};
 use itertools::Itertools;
 use regex::Regex;
 use serde::Deserialize;
@@ -152,7 +152,7 @@ impl Variables {
     }
     pub fn iter_contexts(
         &self,
-    ) -> impl Iterator<Item = Result<HashMapContext, BadVariableError>> + '_ {
+    ) -> impl Iterator<Item = Result<HashMapContext<DefaultNumericTypes>, BadVariableError>> + '_ {
         self.0
             .iter()
             .map(|variable| variable.into_iter().map(move |val| (variable.name(), val)))
@@ -161,14 +161,14 @@ impl Variables {
                 // Iterator on all the combination of values for the variables
                 let mut ctx = build_context();
                 for (var_name, var_value) in var_values {
-                    ctx.set_value(var_name.into(), var_value.into())?;
+                    ctx.set_value(var_name.into(), evalexpr::Value::Int(var_value))?;
                 }
                 Ok(ctx)
             })
     }
 }
 
-fn build_context() -> HashMapContext {
+fn build_context() -> HashMapContext<DefaultNumericTypes> {
     HashMapContext::new()
     // Add custom variables and functions here
 }
@@ -223,16 +223,16 @@ mod tests {
         ]);
         let ctxs: Vec<_> = vars.iter_contexts().collect::<Result<_, _>>().unwrap();
         assert_eq!(4, ctxs.len());
-        assert_eq!(Some(&0.into()), ctxs[0].get_value("x"));
-        assert_eq!(Some(&8.into()), ctxs[0].get_value("y"));
+        assert_eq!(Some(&evalexpr::Value::Int(0)), ctxs[0].get_value("x"));
+        assert_eq!(Some(&evalexpr::Value::Int(8)), ctxs[0].get_value("y"));
 
-        assert_eq!(Some(&0.into()), ctxs[1].get_value("x"));
-        assert_eq!(Some(&9.into()), ctxs[1].get_value("y"));
+        assert_eq!(Some(&evalexpr::Value::Int(0)), ctxs[1].get_value("x"));
+        assert_eq!(Some(&evalexpr::Value::Int(9)), ctxs[1].get_value("y"));
 
-        assert_eq!(Some(&1.into()), ctxs[2].get_value("x"));
-        assert_eq!(Some(&8.into()), ctxs[2].get_value("y"));
+        assert_eq!(Some(&evalexpr::Value::Int(1)), ctxs[2].get_value("x"));
+        assert_eq!(Some(&evalexpr::Value::Int(8)), ctxs[2].get_value("y"));
 
-        assert_eq!(Some(&1.into()), ctxs[3].get_value("x"));
-        assert_eq!(Some(&9.into()), ctxs[3].get_value("y"));
+        assert_eq!(Some(&evalexpr::Value::Int(1)), ctxs[3].get_value("x"));
+        assert_eq!(Some(&evalexpr::Value::Int(9)), ctxs[3].get_value("y"));
     }
 }

@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, de};
 
 use custom_error::custom_error;
 use lazy_static::lazy_static;
+use evalexpr::DefaultNumericTypes;
 
 use crate::{TileReference, Vec2d};
 
@@ -52,7 +53,7 @@ impl<'a> IntoIterator for &'a TileSet {
 struct IntTemplate(evalexpr::Node);
 
 impl IntTemplate {
-    fn eval<C: evalexpr::Context>(&self, context: &C) -> Result<u32, UrlTemplateError> {
+    fn eval<C: evalexpr::Context<NumericTypes = DefaultNumericTypes>>(&self, context: &C) -> Result<u32, UrlTemplateError> {
         let evaluated_int = self.0.eval_int_with_context(context)?;
         Ok(evaluated_int.try_into()?)
     }
@@ -70,7 +71,7 @@ impl FromStr for IntTemplate {
 struct StrTemplate(evalexpr::Node);
 
 impl StrTemplate {
-    fn eval<C: evalexpr::Context>(&self, context: &C) -> Result<String, UrlTemplateError> {
+    fn eval<C: evalexpr::Context<NumericTypes = DefaultNumericTypes>>(&self, context: &C) -> Result<String, UrlTemplateError> {
         let value = self.0.eval_with_context(context)?;
         value_to_string(value)
     }
@@ -118,7 +119,7 @@ struct UrlTemplate {
 }
 
 impl UrlTemplate {
-    fn eval<C: evalexpr::Context>(&self, context: &C) -> Result<String, UrlTemplateError> {
+    fn eval<C: evalexpr::Context<NumericTypes = DefaultNumericTypes>>(&self, context: &C) -> Result<String, UrlTemplateError> {
         self.parts.iter().map(|p| p.eval(context)).collect()
     }
 }
@@ -179,7 +180,7 @@ impl UrlPart {
             min_width,
         })
     }
-    fn eval<C: evalexpr::Context>(&self, context: &C) -> Result<String, UrlTemplateError> {
+    fn eval<C: evalexpr::Context<NumericTypes = DefaultNumericTypes>>(&self, context: &C) -> Result<String, UrlTemplateError> {
         match self {
             UrlPart::Constant(s) => Ok(s.clone()),
             UrlPart::Expression {
@@ -216,8 +217,8 @@ mod tests {
     fn url_template_evaluation() -> Result<(), UrlTemplateError> {
         let tpl = UrlTemplate::from_str("a {{x}} b {{y}} c")?;
         let mut ctx = evalexpr::HashMapContext::new();
-        ctx.set_value("x".into(), 0.into())?;
-        ctx.set_value("y".into(), 10.into())?;
+        ctx.set_value("x".into(), evalexpr::Value::Int(0))?;
+        ctx.set_value("y".into(), evalexpr::Value::Int(10))?;
         assert_eq!(tpl.eval(&ctx)?, "a 0 b 10 c");
         Ok(())
     }
@@ -226,8 +227,8 @@ mod tests {
     fn url_template_evaluation_leading_zeroes() -> Result<(), UrlTemplateError> {
         let tpl = UrlTemplate::from_str("{{x:03}} {{ x + y/2 :02}}")?;
         let mut ctx = evalexpr::HashMapContext::new();
-        ctx.set_value("x".into(), 0.into())?;
-        ctx.set_value("y".into(), 10.into())?;
+        ctx.set_value("x".into(), evalexpr::Value::Int(0))?;
+        ctx.set_value("y".into(), evalexpr::Value::Int(10))?;
         assert_eq!(tpl.eval(&ctx)?, "000 05");
         Ok(())
     }
