@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::default::Default;
 use std::str::FromStr;
 
@@ -48,6 +49,73 @@ impl PageInfo {
     }
 }
 
+fn decode_html_entities(text: &str) -> String {
+    // Create a static HashMap for common HTML entities
+    lazy_static::lazy_static! {
+        static ref HTML_ENTITIES: HashMap<&'static str, &'static str> = {
+            let mut m = HashMap::new();
+            m.insert("amp", "&");
+            m.insert("lt", "<");
+            m.insert("gt", ">");
+            m.insert("quot", "\"");
+            m.insert("apos", "'");
+            m.insert("nbsp", "\u{00A0}");
+            m.insert("iexcl", "¡");
+            m.insert("cent", "¢");
+            m.insert("pound", "£");
+            m.insert("curren", "¤");
+            m.insert("yen", "¥");
+            m.insert("brvbar", "¦");
+            m.insert("sect", "§");
+            m.insert("uml", "¨");
+            m.insert("copy", "©");
+            m.insert("ordf", "ª");
+            m.insert("laquo", "«");
+            m.insert("not", "¬");
+            m.insert("shy", "\u{00AD}");
+            m.insert("reg", "®");
+            m.insert("macr", "¯");
+            m.insert("deg", "°");
+            m
+        };
+    }
+
+    let entity_regex = Regex::new(r"&([a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#x[0-9a-fA-F]+);").unwrap();
+
+    entity_regex
+        .replace_all(text, |caps: &regex::Captures| {
+            let entity = &caps[1];
+
+            // Handle named entities
+            if let Some(&replacement) = HTML_ENTITIES.get(entity) {
+                return replacement.to_string();
+            }
+
+            // Handle numeric entities like &#123; or &#x1A;
+            if entity.starts_with('#') {
+                if entity.starts_with("#x") {
+                    // Hexadecimal
+                    if let Ok(code) = u32::from_str_radix(&entity[2..], 16) {
+                        if let Some(ch) = std::char::from_u32(code) {
+                            return ch.to_string();
+                        }
+                    }
+                } else {
+                    // Decimal
+                    if let Ok(code) = entity[1..].parse::<u32>() {
+                        if let Some(ch) = std::char::from_u32(code) {
+                            return ch.to_string();
+                        }
+                    }
+                }
+            }
+
+            // If we can't decode it, return the original entity
+            format!("&{};", entity)
+        })
+        .to_string()
+}
+
 fn get_name_from_gap_html(html: &str) -> String {
     let name = Regex::new(r#"<h1 class="[^"]+">([^<]+)</h1><h2 class="[^"]+"><span class="[^"]+"><a href="[^"]+">([^"]+) ([^"]+)</a></span><span class="[^"]+">([^<]+)</span></h2>"#)
         .unwrap()
@@ -59,14 +127,16 @@ fn get_name_from_gap_html(html: &str) -> String {
             &(c[4])));
 
     if let Some(result) = name {
-        return result;
+        return decode_html_entities(&result);
     }
 
-    Regex::new(r#""name":"([^"]+)"#)
+    let fallback_name = Regex::new(r#""name":"([^"]+)"#)
         .unwrap()
         .captures(html)
-        .map(|c| (c[1]).to_string())
-        .unwrap_or_else(|| "Google Arts and Culture Image".into())
+        .map(|c| c[1].replace("\\u0026", "&").replace("&quot;", "\""))
+        .unwrap_or_else(|| "Google Arts and Culture Image".into());
+
+    decode_html_entities(&fallback_name)
 }
 
 impl FromStr for PageInfo {

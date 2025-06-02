@@ -1,4 +1,5 @@
 use image::{DynamicImage, GenericImageView, ImageDecoder, ImageReader};
+use log::warn;
 use std::io::Cursor;
 
 use crate::dezoomer::{PostProcessFn, TileReference};
@@ -37,11 +38,10 @@ impl Tile {
                     bytes
                 };
 
-                // Extract ICC profile before loading the image
-                let icc_profile = extract_icc_profile(&transformed_bytes).unwrap_or(None);
+                let (image, icc_profile) = load_image_with_icc_profile(&transformed_bytes)?;
 
                 Ok(Tile {
-                    image: image::load_from_memory(&transformed_bytes)?,
+                    image,
                     position: tile_reference.position,
                     icc_profile,
                 })
@@ -62,16 +62,27 @@ impl Tile {
     }
 }
 
-fn extract_icc_profile(bytes: &[u8]) -> Result<Option<Vec<u8>>, image::ImageError> {
+fn load_image_with_icc_profile(
+    bytes: &[u8],
+) -> Result<(DynamicImage, Option<Vec<u8>>), image::ImageError> {
     let reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
 
     // Try to get a decoder from the reader
     if let Ok(mut decoder) = reader.into_decoder() {
-        // Use trait object to call icc_profile method
-        decoder.icc_profile()
+        // Extract ICC profile first
+        let icc_profile = decoder.icc_profile().unwrap_or_else(|e| {
+            warn!("Failed to extract ICC profile from tile: {e}");
+            None
+        });
+
+        // Then decode the image using the same decoder
+        let image = DynamicImage::from_decoder(decoder)?;
+
+        Ok((image, icc_profile))
     } else {
-        // Format doesn't support decoding or ICC profiles
-        Ok(None)
+        // Fallback to standard loading without ICC profile
+        let image = image::load_from_memory(bytes)?;
+        Ok((image, None))
     }
 }
 
@@ -105,21 +116,16 @@ mod tests {
     use image::ImageBuffer;
 
     #[test]
-    fn test_icc_profile_extraction() {
-        // Test with empty bytes (should return None)
+    fn test_load_image_with_icc_profile() {
+        // Test with empty bytes (should return error)
         let empty_bytes = vec![];
-        let result = extract_icc_profile(&empty_bytes);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_none());
+        let result = load_image_with_icc_profile(&empty_bytes);
+        assert!(result.is_err());
 
-        // Test with invalid image data (should return None or error gracefully)
+        // Test with invalid image data (should return error)
         let invalid_bytes = vec![0xFF, 0xD8, 0xFF, 0xE0]; // Incomplete JPEG header
-        let result = extract_icc_profile(&invalid_bytes);
-        // Should either return Ok(None) or an error, but not panic
-        match result {
-            Ok(profile) => assert!(profile.is_none()),
-            Err(_) => {} // Error is acceptable for invalid data
-        }
+        let result = load_image_with_icc_profile(&invalid_bytes);
+        assert!(result.is_err());
     }
 
     #[test]
