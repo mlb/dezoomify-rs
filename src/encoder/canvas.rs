@@ -163,7 +163,7 @@ impl ImageWriter {
         &self,
         image: &CanvasBuffer<Pix>,
         destination: &Path,
-        icc_profile: &Vec<u8>,
+        icc_profile: &[u8],
     ) -> ImageResult<()> {
         let extension = destination
             .extension()
@@ -211,7 +211,7 @@ impl ImageWriter {
     fn encode_with_icc_profile<Pix, E>(
         image: &CanvasBuffer<Pix>,
         destination: &Path,
-        icc_profile: &Vec<u8>,
+        icc_profile: &[u8],
         encoder_factory: fn(BufWriter<File>) -> E,
         format_name: &str,
     ) -> ImageResult<()>
@@ -223,7 +223,7 @@ impl ImageWriter {
         let fout = BufWriter::new(file);
         let mut encoder = encoder_factory(fout);
 
-        if let Err(e) = encoder.set_icc_profile(icc_profile.clone()) {
+        if let Err(e) = encoder.set_icc_profile(icc_profile.to_owned()) {
             debug!("Failed to set ICC profile for {}: {}", format_name, e);
         } else {
             debug!("Applied ICC profile to {} output", format_name);
@@ -233,7 +233,7 @@ impl ImageWriter {
             image.as_raw(),
             image.width(),
             image.height(),
-            Pix::COLOR_TYPE.into(),
+            Pix::COLOR_TYPE,
         )
     }
 }

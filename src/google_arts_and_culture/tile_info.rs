@@ -92,17 +92,17 @@ fn decode_html_entities(text: &str) -> String {
             }
 
             // Handle numeric entities like &#123; or &#x1A;
-            if entity.starts_with('#') {
-                if entity.starts_with("#x") {
+            if let Some(stripped) = entity.strip_prefix('#') {
+                if let Some(hex_stripped) = entity.strip_prefix("#x") {
                     // Hexadecimal
-                    if let Ok(code) = u32::from_str_radix(&entity[2..], 16) {
+                    if let Ok(code) = u32::from_str_radix(hex_stripped, 16) {
                         if let Some(ch) = std::char::from_u32(code) {
                             return ch.to_string();
                         }
                     }
                 } else {
                     // Decimal
-                    if let Ok(code) = entity[1..].parse::<u32>() {
+                    if let Ok(code) = stripped.parse::<u32>() {
                         if let Some(ch) = std::char::from_u32(code) {
                             return ch.to_string();
                         }
