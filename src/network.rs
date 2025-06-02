@@ -75,6 +75,7 @@ impl TileDownloader {
                     return Ok(Tile {
                         image,
                         position: tile_reference.position,
+                        icc_profile: None,
                     });
                 }
                 Err(cause) => {

@@ -100,6 +100,7 @@ impl<T: TileSaver> Retiler<T> {
                 image: tile
                     .image
                     .resize_exact(scaled_size.x, scaled_size.y, FilterType::Gaussian),
+                icc_profile: tile.icc_profile.clone(),
             })
         };
         let scaled_tile = scaled_tile.as_ref().unwrap_or(tile);
@@ -173,7 +174,7 @@ impl<T: TileSaver> Retiler<T> {
     }
 
     pub fn tile_save(&self, position: Vec2d, size: Vec2d, image: DynamicImage) -> io::Result<()> {
-        self.tile_saver.save_tile(size, Tile { image, position })
+        self.tile_saver.save_tile(size, Tile { image, position, icc_profile: None })
     }
 
     pub fn level_count(&self) -> u32 {
@@ -329,12 +330,14 @@ mod tests {
             .add_tile(&Tile {
                 image: plain_image(Vec2d { x: 2, y: 1 }, 64),
                 position: Vec2d { x: 0, y: 0 },
+                icc_profile: None,
             })
             .unwrap();
         retiler
             .add_tile(&Tile {
                 image: plain_image(Vec2d { x: 2, y: 2 }, 16),
                 position: Vec2d { x: 0, y: 1 },
+                icc_profile: None,
             })
             .unwrap();
         retiler.finalize();
@@ -367,21 +370,24 @@ mod tests {
                     Vec2d { x: 2, y: 2 },
                     Tile {
                         position: Vec2d { x: 0, y: 0 },
-                        image: expected_first_tile
+                        image: expected_first_tile,
+                        icc_profile: None,
                     }
                 ),
                 (
                     Vec2d { x: 2, y: 1 },
                     Tile {
                         position: Vec2d { x: 0, y: 2 },
-                        image: plain_image(Vec2d { x: 2, y: 1 }, 16)
+                        image: plain_image(Vec2d { x: 2, y: 1 }, 16),
+                        icc_profile: None,
                     }
                 ),
                 (
                     image_size,
                     Tile {
                         position: Vec2d { x: 0, y: 0 },
-                        image: expected_zoomed_out_tile
+                        image: expected_zoomed_out_tile,
+                        icc_profile: None,
                     }
                 ),
             ]

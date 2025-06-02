@@ -11,6 +11,7 @@ use super::pixel_streamer::PixelStreamer;
 pub struct PngEncoder {
     pixel_streamer: Option<PixelStreamer<png::StreamWriter<'static, File>>>,
     size: Vec2d,
+    icc_profile: Option<Vec<u8>>,
 }
 
 impl PngEncoder {
@@ -35,12 +36,21 @@ impl PngEncoder {
         Ok(PngEncoder {
             pixel_streamer,
             size,
+            icc_profile: None,
         })
     }
 }
 
 impl Encoder for PngEncoder {
     fn add_tile(&mut self, tile: Tile) -> io::Result<()> {
+        // Capture ICC profile from the first tile that has one
+        if self.icc_profile.is_none() && tile.icc_profile.is_some() {
+            self.icc_profile = tile.icc_profile.clone();
+            if let Some(ref profile) = self.icc_profile {
+                log::debug!("Captured ICC profile from tile (size: {} bytes)", profile.len());
+            }
+        }
+        
         self.pixel_streamer
             .as_mut()
             .expect("tried to add a tile in a finalized image")
@@ -83,6 +93,7 @@ mod tests {
             .add_tile(Tile {
                 position: Vec2d { x: 0, y: 1 },
                 image: DynamicImage::ImageRgb8(ImageBuffer::from_raw(1, 1, vec![1, 2, 3]).unwrap()),
+                icc_profile: None,
             })
             .unwrap();
 

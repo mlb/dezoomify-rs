@@ -160,6 +160,7 @@ mod tests {
                     )
                     .unwrap(),
                 ),
+                icc_profile: None,
             },
             Tile {
                 position: Vec2d { x: 2, y: 0 },
@@ -176,6 +177,7 @@ mod tests {
                     )
                     .unwrap(),
                 ),
+                icc_profile: None,
             },
             Tile {
                 position: Vec2d { x: 0, y: 2 },
@@ -190,6 +192,7 @@ mod tests {
                     )
                     .unwrap(),
                 ),
+                icc_profile: None,
             },
             Tile {
                 position: Vec2d { x: 1, y: 0 },
@@ -203,6 +206,7 @@ mod tests {
                     )
                     .unwrap(),
                 ),
+                icc_profile: None,
             },
         ][i]
             .clone()
