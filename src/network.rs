@@ -129,9 +129,7 @@ impl TileDownloader {
         if let Some(root) = &self.tile_storage_folder {
             match tokio::fs::write(root.join(sanitize(uri)), contents).await {
                 Ok(_) => debug!("Wrote {} to tile cache ({} bytes)", uri, contents.len()),
-                Err(e) => warn!(
-                    "Unable to write {uri} to the tile cache {root:?}: {e}"
-                ),
+                Err(e) => warn!("Unable to write {uri} to the tile cache {root:?}: {e}"),
             }
         }
     }
@@ -163,9 +161,7 @@ pub fn client<'a, I: Iterator<Item = (&'a String, &'a String)>>(
         .chain(headers.map(|(k, v)| (&**k, &**v)))
         .map(|(name, value)| Ok((name.parse()?, value.parse()?)))
         .collect::<Result<header::HeaderMap, ZoomError>>()?;
-    debug!(
-        "Creating an http client with the following headers: {header_map:?}"
-    );
+    debug!("Creating an http client with the following headers: {header_map:?}");
     let client = reqwest::Client::builder()
         .http1_title_case_headers()
         .default_headers(header_map)
@@ -184,10 +180,11 @@ pub fn default_headers() -> HashMap<String, String> {
 pub fn resolve_relative(base: &str, path: &str) -> String {
     if Url::parse(path).is_ok() {
         return path.to_string();
-    } else if let Ok(url) = Url::parse(base)
-        && let Ok(r) = url.join(path) {
+    } else if let Ok(url) = Url::parse(base) {
+        if let Ok(r) = url.join(path) {
             return r.to_string();
         }
+    }
     let mut res = PathBuf::from(base.rsplitn(2, '/').last().unwrap_or_default());
     res.push(path);
     res.to_string_lossy().to_string()

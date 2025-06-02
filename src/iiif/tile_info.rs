@@ -171,14 +171,15 @@ impl ImageInfo {
     /// Some info.json files contain a an invalid value for "@id",
     /// such as "localhost" or "example.com"
     pub fn remove_test_id(&mut self) {
-        if let Some(id) = &self.id
-            && Regex::new(r"^https?://((www\.)?example\.|localhost)")
+        if let Some(id) = &self.id {
+            if Regex::new(r"^https?://((www\.)?example\.|localhost)")
                 .unwrap()
                 .is_match(id)
             {
                 info!("Removing probably invalid IIIF id '{id}'");
                 self.id = None;
             }
+        }
     }
 
     pub fn resolve_relative_urls(&mut self, base: &str) {
@@ -242,12 +243,13 @@ impl ProfileInfo {
             let max_height = self.max_height.unwrap_or(max_width);
             size.y = size.y.min(max_height);
         }
-        if let Some(max_area) = self.max_area
-            && size.area() > max_area {
+        if let Some(max_area) = self.max_area {
+            if size.area() > max_area {
                 let sqrt = ((max_area as f64).sqrt()) as u32;
                 size.y = sqrt.min(size.y);
                 size.x = sqrt.min(size.x);
             }
+        }
         size
     }
     /// Whether the given tile size fits the maximum size constraints in the profile

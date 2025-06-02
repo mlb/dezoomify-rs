@@ -82,7 +82,7 @@ fn zoom_levels_from_info(url: &str, mut image_info: ImageInfo) -> ZoomLevels {
     let img = Arc::new(image_info);
     let tiles = img.tiles();
     let base_url = &Arc::from(url.replace("/info.json", ""));
-    
+
     tiles
         .iter()
         .flat_map(|tile_info| {

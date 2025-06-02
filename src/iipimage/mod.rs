@@ -129,10 +129,11 @@ impl FromStr for Metadata {
                 if let (Some(x), Some(y)) = (n1, n2) {
                     tile_size = Ok(Vec2d { x, y })
                 }
-            } else if key.eq_ignore_ascii_case("resolution-number")
-                && let Some(n) = n1 {
+            } else if key.eq_ignore_ascii_case("resolution-number") {
+                if let Some(n) = n1 {
                     levels = Ok(n)
                 }
+            }
         }
         Ok(Metadata {
             size: size?,

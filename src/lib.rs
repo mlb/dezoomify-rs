@@ -92,10 +92,11 @@ fn level_picker(mut levels: Vec<ZoomLevel>) -> Result<ZoomLevel, ZoomError> {
     loop {
         println!("Which level do you want to download? ");
         let line = stdin_line()?;
-        if let Ok(idx) = line.parse::<usize>()
-            && levels.get(idx).is_some() {
+        if let Ok(idx) = line.parse::<usize>() {
+            if levels.get(idx).is_some() {
                 return Ok(levels.swap_remove(idx));
             }
+        }
         println!("'{line}' is not a valid level number");
     }
 }

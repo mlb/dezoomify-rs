@@ -247,9 +247,7 @@ impl TmpTile {
             let _ = std::fs::remove_file(&tmp_tile_path);
             Ok(Some(tile_img))
         } else {
-            debug!(
-                "Writing partly-filled tile of level {level_size} at position {self_position}"
-            );
+            debug!("Writing partly-filled tile of level {level_size} at position {self_position}");
             tile_img
                 .save(&tmp_tile_path)
                 .map_err(image_error_to_io_error)?;
