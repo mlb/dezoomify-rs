@@ -1,5 +1,5 @@
 use image::{DynamicImage, GenericImageView, ImageDecoder, ImageReader};
-use log::warn;
+use log::{trace, warn};
 use std::io::Cursor;
 
 use crate::dezoomer::{PostProcessFn, TileReference};
@@ -126,36 +126,29 @@ fn load_image_with_metadata(bytes: &[u8]) -> MetadataResult {
     let reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
 
     // Try to get a decoder from the reader
-    if let Ok(mut decoder) = reader.into_decoder() {
-        // Extract ICC profile first
-        let icc_profile = decoder.icc_profile().unwrap_or_else(|e| {
-            warn!("Failed to extract ICC profile from tile: {e}");
-            None
-        });
+    let mut decoder = reader.into_decoder()?;
+    // Extract ICC profile first
+    let icc_profile = decoder.icc_profile().unwrap_or_else(|e| {
+        warn!("Failed to extract ICC profile from tile: {e}");
+        None
+    });
 
-        // Extract EXIF metadata
-        let exif_metadata = decoder.exif_metadata().unwrap_or_else(|e| {
-            warn!("Failed to extract EXIF metadata from tile: {e}");
-            None
-        });
+    // Extract EXIF metadata
+    let exif_metadata = decoder.exif_metadata().unwrap_or_else(|e| {
+        warn!("Failed to extract EXIF metadata from tile: {e}");
+        None
+    });
 
-        // Then decode the image using the same decoder
-        let image = DynamicImage::from_decoder(decoder)?;
+    trace!("Loaded image with icc_profile {icc_profile:?} and exif_metadata {exif_metadata:?}");
 
-        Ok(ImageWithMetadata {
-            image,
-            icc_profile,
-            exif_metadata,
-        })
-    } else {
-        // Fallback to standard loading without metadata
-        let image = image::load_from_memory(bytes)?;
-        Ok(ImageWithMetadata {
-            image,
-            icc_profile: None,
-            exif_metadata: None,
-        })
-    }
+    // Then decode the image using the same decoder
+    let image = DynamicImage::from_decoder(decoder)?;
+
+    Ok(ImageWithMetadata {
+        image,
+        icc_profile,
+        exif_metadata,
+    })
 }
 
 impl std::fmt::Debug for Tile {
