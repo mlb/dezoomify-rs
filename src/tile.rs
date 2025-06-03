@@ -2,10 +2,7 @@ use image::{DynamicImage, GenericImageView, ImageDecoder, ImageReader};
 use log::{trace, warn};
 use std::io::Cursor;
 
-use crate::dezoomer::{PostProcessFn, TileReference};
-use crate::errors::BufferToImageError;
-use crate::network::fetch_uri;
-use crate::{Vec2d, ZoomError};
+use crate::Vec2d;
 
 #[derive(Clone)]
 pub struct Tile {
@@ -26,36 +23,7 @@ impl Tile {
     pub fn builder() -> TileBuilder {
         TileBuilder::default()
     }
-    pub async fn download(
-        post_process_fn: PostProcessFn,
-        tile_reference: &TileReference,
-        client: &reqwest::Client,
-    ) -> Result<Tile, ZoomError> {
-        let bytes = fetch_uri(&tile_reference.url, client).await?;
-        let tile_reference = tile_reference.clone();
 
-        let tile: Result<Tile, BufferToImageError> = tokio::spawn(async move {
-            tokio::task::block_in_place(move || {
-                let transformed_bytes = if let PostProcessFn::Fn(post_process) = post_process_fn {
-                    post_process(&tile_reference, bytes)
-                        .map_err(|e| BufferToImageError::PostProcessing { e })?
-                } else {
-                    bytes
-                };
-
-                let image_with_metadata = load_image_with_metadata(&transformed_bytes)?;
-
-                Ok(Tile {
-                    image: image_with_metadata.image,
-                    position: tile_reference.position,
-                    icc_profile: image_with_metadata.icc_profile,
-                    exif_metadata: image_with_metadata.exif_metadata,
-                })
-            })
-        })
-        .await?;
-        Ok(tile?)
-    }
     pub fn empty(position: Vec2d, size: Vec2d) -> Tile {
         Tile {
             image: DynamicImage::new_rgba8(size.x, size.y),
@@ -97,8 +65,18 @@ impl TileBuilder {
         self
     }
 
+    pub fn with_optional_icc_profile(mut self, profile: Option<Vec<u8>>) -> Self {
+        self.icc_profile = profile;
+        self
+    }
+
     pub fn with_exif_metadata(mut self, metadata: Vec<u8>) -> Self {
         self.exif_metadata = Some(metadata);
+        self
+    }
+
+    pub fn with_optional_exif_metadata(mut self, metadata: Option<Vec<u8>>) -> Self {
+        self.exif_metadata = metadata;
         self
     }
 
@@ -113,16 +91,19 @@ impl TileBuilder {
 }
 
 /// Represents an image loaded with its associated metadata
+///
+/// This struct combines a decoded image with any available metadata that was
+/// extracted during the loading process, such as ICC color profiles and EXIF data.
 #[derive(Debug)]
-struct ImageWithMetadata {
-    image: DynamicImage,
-    icc_profile: Option<Vec<u8>>,
-    exif_metadata: Option<Vec<u8>>,
+pub struct ImageWithMetadata {
+    pub image: DynamicImage,
+    pub icc_profile: Option<Vec<u8>>,
+    pub exif_metadata: Option<Vec<u8>>,
 }
 
 type MetadataResult = Result<ImageWithMetadata, image::ImageError>;
 
-fn load_image_with_metadata(bytes: &[u8]) -> MetadataResult {
+pub fn load_image_with_metadata(bytes: &[u8]) -> MetadataResult {
     let reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
 
     // Try to get a decoder from the reader
@@ -139,7 +120,7 @@ fn load_image_with_metadata(bytes: &[u8]) -> MetadataResult {
         None
     });
 
-    trace!("Loaded image with icc_profile {icc_profile:?} and exif_metadata {exif_metadata:?}");
+    trace!("Loaded image with icc_profile {icc_profile:x?} and exif_metadata {exif_metadata:x?}");
 
     // Then decode the image using the same decoder
     let image = DynamicImage::from_decoder(decoder)?;

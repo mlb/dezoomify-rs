@@ -3,7 +3,6 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use image::DynamicImage;
 use log::{debug, trace, warn};
 use reqwest::{Client, header};
 use sanitize_filename_reader_friendly::sanitize;
@@ -14,7 +13,7 @@ use url::Url;
 use crate::arguments::Arguments;
 use crate::dezoomer::{PostProcessFn, TileReference};
 use crate::errors::BufferToImageError;
-use crate::tile::Tile;
+use crate::tile::{Tile, load_image_with_metadata};
 use crate::{TileDownloadError, ZoomError};
 
 /// Fetch data, either from an URL or a path to a local file.
@@ -71,11 +70,8 @@ impl TileDownloader {
         let mut failures: usize = 0;
         loop {
             match self.load_image(Arc::clone(&tile_reference)).await {
-                Ok(image) => {
-                    return Ok(Tile::builder()
-                        .with_image(image)
-                        .at_position(tile_reference.position)
-                        .build());
+                Ok(tile) => {
+                    return Ok(tile);
                 }
                 Err(cause) => {
                     if failures >= self.retries {
@@ -94,10 +90,7 @@ impl TileDownloader {
         }
     }
 
-    async fn load_image(
-        &self,
-        tile_reference: Arc<TileReference>,
-    ) -> Result<DynamicImage, ZoomError> {
+    async fn load_image(&self, tile_reference: Arc<TileReference>) -> Result<Tile, ZoomError> {
         let bytes = if let Some(bytes) = self.read_from_tile_cache(&tile_reference.url).await {
             bytes
         } else {
@@ -107,7 +100,17 @@ impl TileDownloader {
             self.write_to_tile_cache(&tile_reference.url, &bytes).await;
             bytes
         };
-        Ok(tokio::task::spawn_blocking(move || image::load_from_memory(&bytes)).await??)
+
+        let position = tile_reference.position;
+        let image_with_metadata =
+            tokio::task::spawn_blocking(move || load_image_with_metadata(&bytes)).await??;
+
+        Ok(Tile::builder()
+            .with_image(image_with_metadata.image)
+            .at_position(position)
+            .with_optional_icc_profile(image_with_metadata.icc_profile)
+            .with_optional_exif_metadata(image_with_metadata.exif_metadata)
+            .build())
     }
 
     async fn download_image_bytes(
