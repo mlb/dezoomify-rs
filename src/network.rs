@@ -38,14 +38,22 @@ pub async fn fetch_uri(uri: &str, http: &Client) -> Result<Vec<u8>, ZoomError> {
         let mut contents = Vec::new();
         let bytes = response.bytes().await?;
         contents.extend(bytes);
-        trace!("Successfully finished loading url: '{}' - received {} bytes: {}", 
-               uri, contents.len(), display_bytes(&contents[..contents.len().min(256)]));
+        trace!(
+            "Successfully finished loading url: '{}' - received {} bytes: {}",
+            uri,
+            contents.len(),
+            display_bytes(&contents[..contents.len().min(256)])
+        );
         Ok(contents)
     } else {
         debug!("Loading file: '{uri}'");
         let result = fs::read(uri).await?;
-        debug!("Loaded file: '{}' - {} bytes: {}", 
-               uri, result.len(), display_bytes(&result[..result.len().min(256)]));
+        debug!(
+            "Loaded file: '{}' - {} bytes: {}",
+            uri,
+            result.len(),
+            display_bytes(&result[..result.len().min(256)])
+        );
         Ok(result)
     }
 }

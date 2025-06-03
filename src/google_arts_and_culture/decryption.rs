@@ -1,8 +1,8 @@
+use crate::binary_display::display_bytes;
 use aes::cipher::{BlockDecryptMut, KeyIvInit, block_padding::NoPadding};
 use custom_error::custom_error;
 use log::trace;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
-use crate::binary_display::display_bytes;
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
 /// Decrypt an encrypted image
@@ -34,9 +34,17 @@ pub fn decrypt(encrypted: Vec<u8>) -> Result<Vec<u8>, InvalidEncryptedImage> {
     }
     let mut encrypted = Vec::new();
     c = read_size(c, &mut encrypted, encrypted_size)?;
-    trace!("Encrypted data ({} bytes): {}", encrypted.len(), display_bytes(&encrypted[..encrypted.len().min(64)]));
+    trace!(
+        "Encrypted data ({} bytes): {}",
+        encrypted.len(),
+        display_bytes(&encrypted[..encrypted.len().min(64)])
+    );
     let decrypted_chunk = aes_decrypt_buffer(&mut encrypted)?;
-    trace!("Decrypted data ({} bytes): {}", decrypted_chunk.len(), display_bytes(&decrypted_chunk[..decrypted_chunk.len().min(64)]));
+    trace!(
+        "Decrypted data ({} bytes): {}",
+        decrypted_chunk.len(),
+        display_bytes(&decrypted_chunk[..decrypted_chunk.len().min(64)])
+    );
     decrypted.write_all(decrypted_chunk)?;
 
     let footer_size = end_position - encrypted_size - 4 - header_size - 4;

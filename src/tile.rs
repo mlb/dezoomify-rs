@@ -2,7 +2,7 @@ use image::{DynamicImage, GenericImageView, ImageDecoder, ImageReader};
 use log::{trace, warn};
 use std::io::Cursor;
 
-use crate::{display_bytes, Vec2d};
+use crate::{Vec2d, display_bytes};
 
 #[derive(Clone)]
 pub struct Tile {
@@ -120,7 +120,11 @@ pub fn load_image_with_metadata(bytes: &[u8]) -> MetadataResult {
         None
     });
 
-    trace!("Loaded image with icc_profile {:?} and exif_metadata {:?}", icc_profile.as_ref().map(display_bytes), exif_metadata.as_ref().map(display_bytes));
+    trace!(
+        "Loaded image with icc_profile {:?} and exif_metadata {:?}",
+        icc_profile.as_ref().map(display_bytes),
+        exif_metadata.as_ref().map(display_bytes)
+    );
 
     // Then decode the image using the same decoder
     let image = DynamicImage::from_decoder(decoder)?;
@@ -140,7 +144,10 @@ impl std::fmt::Debug for Tile {
             .field("width", &self.image.width())
             .field("height", &self.image.height())
             .field("icc_profile", &self.icc_profile.as_ref().map(display_bytes))
-            .field("exif_metadata", &self.exif_metadata.as_ref().map(display_bytes))
+            .field(
+                "exif_metadata",
+                &self.exif_metadata.as_ref().map(display_bytes),
+            )
             .finish()
     }
 }
