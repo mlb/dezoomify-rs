@@ -8,7 +8,7 @@ use crate::dezoomer::Dezoomer;
 
 use super::{Vec2d, ZoomError, auto, stdin_line};
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, disable_help_flag = true)]
 pub struct Arguments {
     /// Displays this help message
@@ -121,6 +121,12 @@ pub struct Arguments {
     /// retrying partially failed downloads, or stitching the tiles with an external program.
     #[arg(short = 'c', long = "tile-cache")]
     pub tile_storage_folder: Option<PathBuf>,
+
+    /// Path to a text file containing a list of URLs to process in bulk mode.
+    /// Each line in the file should contain one URL. In bulk mode, if no level-specifying
+    /// argument is defined (such as --max-width), then --largest is implied.
+    #[arg(long = "bulk")]
+    pub bulk: Option<PathBuf>,
 }
 
 impl Default for Arguments {
@@ -146,6 +152,7 @@ impl Default for Arguments {
             connect_timeout: Duration::from_secs(6),
             logging: "warn".to_string(),
             tile_storage_folder: None,
+            bulk: None,
         }
     }
 }
@@ -160,6 +167,42 @@ impl Arguments {
             }
         }
     }
+
+    pub fn read_bulk_urls(&self) -> Result<Vec<String>, ZoomError> {
+        if let Some(bulk_path) = &self.bulk {
+            let content = std::fs::read_to_string(bulk_path)?;
+            let urls: Vec<String> = content
+                .lines()
+                .map(|line| line.trim())
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .map(String::from)
+                .collect();
+            if urls.is_empty() {
+                return Err(ZoomError::Io {
+                    source: std::io::Error::other("Bulk file contains no valid URLs"),
+                });
+            }
+            Ok(urls)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    pub fn is_bulk_mode(&self) -> bool {
+        self.bulk.is_some()
+    }
+
+    pub fn should_use_largest(&self) -> bool {
+        self.largest
+            || (self.is_bulk_mode()
+                && self.max_width.is_none()
+                && self.max_height.is_none()
+                && self.zoom_level.is_none())
+    }
+
+    pub fn has_level_specifying_args(&self) -> bool {
+        self.max_width.is_some() || self.max_height.is_some() || self.zoom_level.is_some()
+    }
     pub fn find_dezoomer(&self) -> Result<Box<dyn Dezoomer>, ZoomError> {
         auto::all_dezoomers(true)
             .into_iter()
@@ -169,7 +212,7 @@ impl Arguments {
             })
     }
     pub fn best_size<I: Iterator<Item = Vec2d>>(&self, sizes: I) -> Option<Vec2d> {
-        if self.largest {
+        if self.should_use_largest() {
             sizes.max_by_key(|s| s.area())
         } else if self.max_width.is_some() || self.max_height.is_some() {
             sizes
@@ -251,4 +294,64 @@ fn test_parse_duration() {
     assert!(parse_duration("ms").is_err());
     assert!(parse_duration("1j").is_err());
     assert!(parse_duration("").is_err());
+}
+
+#[test]
+fn test_bulk_url_reading() {
+    use std::fs::File;
+    use std::io::Write;
+    use tempdir::TempDir;
+
+    // Test with a valid bulk file
+    let temp_dir = TempDir::new("dezoomify-rs-test-bulk").unwrap();
+    let bulk_file_path = temp_dir.path().join("urls.txt");
+
+    let mut temp_file = File::create(&bulk_file_path).unwrap();
+    writeln!(temp_file, "https://example.com/image1").unwrap();
+    writeln!(temp_file, "https://example.com/image2").unwrap();
+    writeln!(temp_file, "# This is a comment").unwrap();
+    writeln!(temp_file).unwrap(); // Empty line
+    writeln!(temp_file, "https://example.com/image3").unwrap();
+
+    let mut args = Arguments {
+        bulk: Some(bulk_file_path),
+        ..Default::default()
+    };
+
+    let urls = args.read_bulk_urls().unwrap();
+    assert_eq!(urls.len(), 3);
+    assert_eq!(urls[0], "https://example.com/image1");
+    assert_eq!(urls[1], "https://example.com/image2");
+    assert_eq!(urls[2], "https://example.com/image3");
+
+    // Test bulk mode detection
+    assert!(args.is_bulk_mode());
+
+    // Test should_use_largest in bulk mode
+    assert!(args.should_use_largest());
+
+    // Test should_use_largest with explicit options
+    args.max_width = Some(1000);
+    assert!(!args.should_use_largest());
+}
+
+#[test]
+fn test_should_use_largest() {
+    let mut args = Arguments::default();
+
+    // Normal mode without bulk
+    assert!(!args.should_use_largest());
+
+    // With explicit largest flag
+    args.largest = true;
+    assert!(args.should_use_largest());
+
+    // Reset and test bulk mode
+    args.largest = false;
+    args.bulk = Some(std::path::PathBuf::from("test.txt"));
+    assert!(args.should_use_largest()); // Should be true in bulk mode without level options
+
+    // With level options in bulk mode
+    args.zoom_level = Some(1);
+    assert!(!args.should_use_largest());
 }

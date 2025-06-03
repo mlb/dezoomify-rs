@@ -231,6 +231,8 @@ Options:
           If several zoom levels are available, then select the one with the largest width that is inferior to max-width
   -h, --max-height <MAX_HEIGHT>
           If several zoom levels are available, then select the one with the largest height that is inferior to max-height
+      --zoom-level <ZOOM_LEVEL>
+          Select a specific zoom level by its index (0-based). If the specified level doesn't exist, falls back to the last one
   -n, --parallelism <PARALLELISM>
           Degree of parallelism to use. At most this number of tiles will be downloaded at the same time [default: 16]
   -r, --retries <RETRIES>
@@ -255,6 +257,8 @@ Options:
           Level of logging verbosity. Set it to "debug" to get all logging messages [default: warn]
   -c, --tile-cache <TILE_STORAGE_FOLDER>
           A place to store the image tiles when after they are downloaded and decrypted. By default, tiles are not stored to disk (which is faster), but using a tile cache allows retrying partially failed downloads, or stitching the tiles with an external program
+      --bulk <BULK>
+          Path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
   -V, --version
           Print version
 ```
@@ -263,12 +267,54 @@ Options:
   - For documentation specific to this tool, see the [dezoomify-rs wiki](https://github.com/lovasoa/dezoomify-rs/wiki). Do not hesitate to contribute to it by creating new pages or modifying existing ones.
   - For general purpose documentation about zoomable images, the [dezoomify wiki](https://github.com/lovasoa/dezoomify/wiki) may be useful.
 
-## Batch mode
+## Bulk mode
 
-dezoomify-rs does not yet have the ability to download multiple images at once itself.
-However, since it is a commandline application. You can use it within a [for loop](https://ss64.com/nt/for.html) in a [batch script](https://en.wikibooks.org/wiki/Windows_Batch_Scripting) in Windows or a [bash script](https://en.wikibooks.org/wiki/Bash_Shell_Scripting) in Linux, MacOS (or windows with [wsl](https://docs.microsoft.com/en-us/windows/wsl/about)).
+dezoomify-rs supports bulk processing of multiple URLs using the `--bulk` option. This allows you to process multiple zoomable images in a single command.
 
-For instance, in bash, you could create a file called `urls.txt` containing all the urls you want to dezoomify, and then use [xargs](https://en.wikipedia.org/wiki/Xargs) together with dezoomify-rs : 
+### Using bulk mode
+
+Create a text file containing one URL per line:
+
+```
+# urls.txt - Lines starting with # are comments and will be ignored
+https://example.com/image1/ImageProperties.xml
+https://example.com/image2/info.json
+https://example.com/image3.dzi
+
+# You can also include local file paths
+/path/to/local/tiles.yaml
+```
+
+Then run dezoomify-rs with the `--bulk` option:
+
+```sh
+./dezoomify-rs --bulk urls.txt
+```
+
+### Bulk mode behavior
+
+- **Progress tracking**: Each URL is processed sequentially with progress indicators (`[1/5]`, `[2/5]`, etc.)
+- **Automatic level selection**: If no level-specifying arguments (`--max-width`, `--max-height`, `--zoom-level`) are provided, `--largest` is automatically implied
+- **Output file naming**: If you specify an output file with `--outfile`, each image will be saved with a suffix (`_0001`, `_0002`, etc.)
+- **Error handling**: Failed downloads don't stop the entire process; the tool continues with the next URL and reports a summary at the end
+
+### Examples
+
+Process multiple images and save them with a common prefix:
+```sh
+./dezoomify-rs --bulk urls.txt my_collection.jpg
+# Creates: my_collection_0001.jpg, my_collection_0002.jpg, etc.
+```
+
+Process with specific size constraints:
+```sh
+./dezoomify-rs --bulk urls.txt --max-width 2000
+# Uses max-width constraint instead of auto-selecting largest
+```
+
+### Alternative: Using shell scripts
+
+For more advanced processing, you can still use traditional shell scripting approaches with [xargs](https://en.wikipedia.org/wiki/Xargs):
 
 ```sh
 xargs -d '\n' -n 1 ./dezoomify-rs < ./urls.txt
