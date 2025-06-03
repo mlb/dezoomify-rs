@@ -108,6 +108,21 @@ fn choose_level(mut levels: Vec<ZoomLevel>, args: &Arguments) -> Result<ZoomLeve
         0 => Err(ZoomError::NoLevels),
         1 => Ok(levels.swap_remove(0)),
         _ => {
+            if let Some(requested_level) = args.zoom_level {
+                let actual_level = if requested_level < levels.len() {
+                    info!("Selected zoom level {} as requested", requested_level);
+                    requested_level
+                } else {
+                    info!(
+                        "Requested zoom level {} not available. Using last one ({})",
+                        requested_level,
+                        levels.len() - 1
+                    );
+                    levels.len() - 1
+                };
+                return Ok(levels.swap_remove(actual_level));
+            }
+
             let pos = args
                 .best_size(levels.iter().filter_map(|l| l.size_hint()))
                 .and_then(|best_size| {

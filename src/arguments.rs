@@ -44,6 +44,11 @@ pub struct Arguments {
     #[arg(short = 'h', long = "max-height")]
     max_height: Option<u32>,
 
+    /// Select a specific zoom level by its index (0-based). If the specified level doesn't exist,
+    /// falls back to the last one.
+    #[arg(long = "zoom-level")]
+    pub zoom_level: Option<usize>,
+
     /// Degree of parallelism to use. At most this number of
     /// tiles will be downloaded at the same time.
     #[arg(short = 'n', long = "parallelism", default_value = "16")]
@@ -128,6 +133,7 @@ impl Default for Arguments {
             largest: false,
             max_width: None,
             max_height: None,
+            zoom_level: None,
             parallelism: 16,
             retries: 1,
             compression: 20,
