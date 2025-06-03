@@ -273,3 +273,18 @@ For instance, in bash, you could create a file called `urls.txt` containing all 
 ```sh
 xargs -d '\n' -n 1 ./dezoomify-rs < ./urls.txt
 ```
+
+## Technical Architecture
+
+Dezoomify-rs works by first analyzing the structure of a zoomable image to understand its tiling scheme,
+then systematically downloads all individual tiles and reassembles them into the complete high-resolution image.
+
+We can automatically detect which type of zoomable image format is being used (such as Zoomify, IIIF, or DeepZoom)
+and apply the appropriate strategy to locate and download tiles.
+
+During the download process, dezoomify-rs can preserve important image metadata:
+[ICC color profiles](https://en.wikipedia.org/wiki/ICC_profile) from individual tiles are transferred
+to the final output image to maintain accurate color representation,
+and EXIF metadata is preserved when saving to PNG format (though it's lost with other formats due to encoder limitations).
+
+The PNG encoder uses a streaming approach that writes image data progressively to disk, allowing it to handle extremely large images without being limited by available system memory. In contrast, other format encoders like JPEG must keep the entire assembled image in memory before writing, which can be a constraint for very large images.
