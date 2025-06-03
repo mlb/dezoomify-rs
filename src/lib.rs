@@ -13,6 +13,7 @@ use log::{debug, info};
 use reqwest::Client;
 
 pub use arguments::Arguments;
+pub use binary_display::{BinaryDisplay, display_bytes};
 use dezoomer::TileReference;
 use dezoomer::{Dezoomer, DezoomerError, DezoomerInput, ZoomLevels};
 use dezoomer::{TileFetchResult, ZoomLevel, ZoomLevelIter};
@@ -28,6 +29,7 @@ use crate::network::TileDownloader;
 use crate::output_file::reserve_output_file;
 
 mod arguments;
+mod binary_display;
 pub mod dezoomer;
 mod encoder;
 mod errors;
