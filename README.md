@@ -39,7 +39,7 @@ The following dezoomers are currently available:
 
 ## Screenshots
 
-![dezoomify-rs screenshot](https://user-images.githubusercontent.com/552629/83974627-1cad7000-a8ef-11ea-865b-e1ea0beacac5.gif)
+https://github.com/user-attachments/assets/e7174665-004d-44b2-a9f5-ae5a838e1262
 
 ## Usage instructions
 
