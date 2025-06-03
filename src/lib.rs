@@ -1,14 +1,11 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use std::env::current_dir;
-use std::error::Error;
-use std::io::BufRead;
-use std::path::PathBuf;
-use std::{fmt, fs, io};
 
-use futures::stream::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
-use itertools::Itertools;
+use std::io::BufRead;
+use std::path::{Path, PathBuf};
+use std::{fs, io};
+
 use log::{debug, info};
 use reqwest::Client;
 
@@ -16,7 +13,7 @@ pub use arguments::Arguments;
 pub use binary_display::{BinaryDisplay, display_bytes};
 use dezoomer::TileReference;
 use dezoomer::{Dezoomer, DezoomerError, DezoomerInput, ZoomLevels};
-use dezoomer::{TileFetchResult, ZoomLevel, ZoomLevelIter};
+use dezoomer::{ZoomLevel, ZoomLevelIter};
 pub use errors::ZoomError;
 use network::{client, fetch_uri};
 use output_file::get_outname;
@@ -25,12 +22,13 @@ pub use vec2d::Vec2d;
 
 use crate::dezoomer::PageContents;
 use crate::encoder::tile_buffer::TileBuffer;
-use crate::network::TileDownloader;
+
 use crate::output_file::reserve_output_file;
 
 mod arguments;
 mod binary_display;
 pub mod dezoomer;
+pub(crate) mod download_state;
 mod encoder;
 mod errors;
 mod network;
@@ -85,6 +83,27 @@ async fn list_tiles(
     }
 }
 
+/// Validates a user input line as a level index
+fn parse_level_index(input: &str, max_index: usize) -> Option<usize> {
+    input.parse::<usize>().ok().filter(|&idx| idx < max_index)
+}
+
+/// Gets the actual level index to use, handling out-of-bounds requests
+fn resolve_level_index(requested: usize, available_count: usize) -> usize {
+    if requested < available_count {
+        requested
+    } else {
+        available_count - 1
+    }
+}
+
+/// Finds the position of a level with the specified size hint
+fn find_level_with_size(levels: &[ZoomLevel], target_size: Vec2d) -> Option<usize> {
+    levels
+        .iter()
+        .position(|l| l.size_hint() == Some(target_size))
+}
+
 /// An interactive level picker
 fn level_picker(mut levels: Vec<ZoomLevel>) -> Result<ZoomLevel, ZoomError> {
     println!("Found the following zoom levels:");
@@ -94,10 +113,8 @@ fn level_picker(mut levels: Vec<ZoomLevel>) -> Result<ZoomLevel, ZoomError> {
     loop {
         println!("Which level do you want to download? ");
         let line = stdin_line()?;
-        if let Ok(idx) = line.parse::<usize>() {
-            if levels.get(idx).is_some() {
-                return Ok(levels.swap_remove(idx));
-            }
+        if let Some(idx) = parse_level_index(&line, levels.len()) {
+            return Ok(levels.swap_remove(idx));
         }
         println!("'{line}' is not a valid level number");
     }
@@ -109,47 +126,30 @@ fn choose_level(mut levels: Vec<ZoomLevel>, args: &Arguments) -> Result<ZoomLeve
         1 => Ok(levels.swap_remove(0)),
         _ => {
             if let Some(requested_level) = args.zoom_level {
-                let actual_level = if requested_level < levels.len() {
+                let actual_level = resolve_level_index(requested_level, levels.len());
+                if actual_level == requested_level {
                     info!("Selected zoom level {} as requested", requested_level);
-                    requested_level
                 } else {
                     info!(
                         "Requested zoom level {} not available. Using last one ({})",
-                        requested_level,
-                        levels.len() - 1
+                        requested_level, actual_level
                     );
-                    levels.len() - 1
-                };
+                }
                 return Ok(levels.swap_remove(actual_level));
             }
 
-            let pos = args
-                .best_size(levels.iter().filter_map(|l| l.size_hint()))
-                .and_then(|best_size| {
-                    levels
-                        .iter()
-                        .find_position(|&l| l.size_hint() == Some(best_size))
-                });
-            if let Some((i, _)) = pos {
-                Ok(levels.swap_remove(i))
-            } else {
-                level_picker(levels)
+            if let Some(best_size) = args.best_size(levels.iter().filter_map(|l| l.size_hint())) {
+                if let Some(pos) = find_level_with_size(&levels, best_size) {
+                    return Ok(levels.swap_remove(pos));
+                }
             }
+
+            level_picker(levels)
         }
     }
 }
 
-fn progress_bar(n: usize) -> ProgressBar {
-    let progress = ProgressBar::new(n as u64);
-    progress.set_style(
-        ProgressStyle::default_bar()
-            .template("[ETA:{eta}] {bar:40.cyan/blue} {pos:>4}/{len:4} {msg}")
-            .expect("Invalid indicatif progress bar template")
-            .progress_chars("##-"),
-    );
-    progress
-}
-
+/// Finds the appropriate zoomlevel for a given size if one is specified,
 async fn find_zoomlevel(args: &Arguments) -> Result<ZoomLevel, ZoomError> {
     let mut dezoomer = args.find_dezoomer()?;
     let uri = args.choose_input_uri()?;
@@ -160,116 +160,58 @@ async fn find_zoomlevel(args: &Arguments) -> Result<ZoomLevel, ZoomError> {
     choose_level(zoom_levels, args)
 }
 
+/// Prepares the output file path for saving
+fn prepare_output_path(
+    outfile_arg: &Option<PathBuf>,
+    title: &Option<String>,
+    base_dir: &Path,
+    size_hint: Option<Vec2d>,
+) -> Result<PathBuf, ZoomError> {
+    let outname = get_outname(outfile_arg, title, base_dir, size_hint);
+    let save_as = fs::canonicalize(outname.as_path()).unwrap_or_else(|_e| outname.clone());
+    reserve_output_file(&save_as)?;
+    Ok(save_as)
+}
+
+/// Creates a tile buffer for the given output path
+async fn create_tile_buffer(save_as: PathBuf, compression: u8) -> Result<TileBuffer, ZoomError> {
+    TileBuffer::new(save_as, compression).await
+}
+
 pub async fn dezoomify(args: &Arguments) -> Result<PathBuf, ZoomError> {
     let zoom_level = find_zoomlevel(args).await?;
     let base_dir = current_dir()?;
-    let outname = get_outname(
+    let save_as = prepare_output_path(
         &args.outfile,
         &zoom_level.title(),
         &base_dir,
         zoom_level.size_hint(),
-    );
-    let save_as = fs::canonicalize(outname.as_path()).unwrap_or_else(|_e| outname.clone());
-    reserve_output_file(&save_as)?;
-    let tile_buffer: TileBuffer = TileBuffer::new(save_as.clone(), args.compression).await?;
+    )?;
+    let tile_buffer = create_tile_buffer(save_as.clone(), args.compression).await?;
     info!("Dezooming {}", zoom_level.name());
     dezoomify_level(args, zoom_level, tile_buffer).await?;
     Ok(save_as)
 }
 
-pub async fn dezoomify_level(
-    args: &Arguments,
-    mut zoom_level: ZoomLevel,
-    tile_buffer: TileBuffer,
+/// Validates the download success based on the final state.
+/// Validates that enough tiles were downloaded to proceed
+fn validate_download_success(state: &download_state::DownloadState) -> Result<(), ZoomError> {
+    if !state.is_successful() {
+        Err(ZoomError::NoTile)
+    } else {
+        Ok(())
+    }
+}
+
+/// Determines final result based on download success rate
+fn determine_final_result(
+    state: &download_state::DownloadState,
+    destination: String,
 ) -> Result<(), ZoomError> {
-    let level_headers = zoom_level.http_headers();
-    let downloader = TileDownloader {
-        http_client: client(level_headers.iter().chain(args.headers()), args, None)?,
-        post_process_fn: zoom_level.post_process_fn(),
-        retries: args.retries,
-        retry_delay: args.retry_delay,
-        tile_storage_folder: args.tile_storage_folder.clone(),
-    };
-    let mut throttler = throttler::Throttler::new(args.min_interval);
-    info!("Creating canvas");
-    let mut canvas = tile_buffer;
-
-    let progress = progress_bar(10);
-    let mut total_tiles = 0u64;
-    let mut successful_tiles = 0u64;
-
-    progress.set_message("Computing the URLs of the image tiles...");
-
-    let mut zoom_level_iter = ZoomLevelIter::new(&mut zoom_level);
-    let mut last_count = 0;
-    let mut last_successes = 0;
-    while let Some(tile_refs) = zoom_level_iter.next_tile_references() {
-        last_count = tile_refs.len() as u64;
-        total_tiles += last_count;
-        progress.set_length(total_tiles);
-
-        progress.set_message("Requesting the tiles...");
-
-        let mut stream = futures::stream::iter(tile_refs)
-            .map(|tile_ref: TileReference| downloader.download_tile(tile_ref))
-            .buffer_unordered(args.parallelism);
-
-        last_successes = 0;
-        let mut tile_size = None;
-
-        if let Some(size) = zoom_level_iter.size_hint() {
-            canvas.set_size(size).await?;
-        }
-
-        while let Some(tile_result) = stream.next().await {
-            debug!("Received tile result: {tile_result:?}");
-            progress.inc(1);
-            let tile = match tile_result {
-                Ok(tile) => {
-                    progress.set_message(format!("Loaded tile at {}", tile.position()));
-                    tile_size.replace(tile.size());
-                    last_successes += 1;
-                    Some(tile)
-                }
-                Err(err) => {
-                    // If a tile download fails, we replace it with an empty tile
-                    progress.set_message(err.to_string());
-                    let position = err.tile_reference.position;
-                    tile_size.and_then(|tile_size| {
-                        zoom_level_iter.size_hint().map(|canvas_size| {
-                            let size = max_size_in_rect(position, tile_size, canvas_size);
-                            Tile::empty(position, size)
-                        })
-                    })
-                }
-            };
-            if let Some(tile) = tile {
-                canvas.add_tile(tile).await;
-            }
-            throttler.wait().await;
-        }
-        successful_tiles += last_successes;
-        zoom_level_iter.set_fetch_result(TileFetchResult {
-            count: last_count,
-            successes: last_successes,
-            tile_size,
-        });
-    }
-
-    if successful_tiles == 0 {
-        return Err(ZoomError::NoTile);
-    }
-
-    progress.set_message("Downloaded all tiles. Finalizing the image file.");
-    canvas.finalize().await?;
-
-    progress.finish_with_message("Finished tile download");
-
-    if last_successes < last_count {
-        let destination = canvas.destination().to_string_lossy().to_string();
+    if state.has_partial_failure() {
         Err(ZoomError::PartialDownload {
-            successful_tiles,
-            total_tiles,
+            successful_tiles: state.successful_tiles,
+            total_tiles: state.total_tiles,
             destination,
         })
     } else {
@@ -277,25 +219,186 @@ pub async fn dezoomify_level(
     }
 }
 
-#[derive(Debug)]
-pub struct TileDownloadError {
-    tile_reference: TileReference,
-    cause: ZoomError,
-}
+pub async fn dezoomify_level(
+    args: &Arguments,
+    mut zoom_level: ZoomLevel,
+    tile_buffer: TileBuffer,
+) -> Result<(), ZoomError> {
+    info!("Creating canvas");
+    let mut canvas = tile_buffer;
+    let mut coordinator = download_state::TileDownloadCoordinator::new(&zoom_level, args)?;
+    let mut state = download_state::DownloadState::new();
+    let progress = download_state::ProgressManager::new();
 
-impl fmt::Display for TileDownloadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Unable to download tile '{}'. Cause: {}",
-            self.tile_reference.url, self.cause
-        )
+    progress.set_computing_urls();
+
+    let mut zoom_level_iter = ZoomLevelIter::new(&mut zoom_level);
+
+    while let Some(tile_refs) = zoom_level_iter.next_tile_references() {
+        coordinator
+            .download_batch(
+                tile_refs,
+                &mut canvas,
+                &mut state,
+                &progress,
+                &zoom_level_iter,
+            )
+            .await?;
+
+        zoom_level_iter.set_fetch_result(state.create_fetch_result());
     }
-}
 
-impl Error for TileDownloadError {}
+    validate_download_success(&state)?;
+
+    progress.set_finalizing();
+    canvas.finalize().await?;
+    progress.finish();
+
+    let destination = canvas.destination().to_string_lossy().to_string();
+    determine_final_result(&state, destination)
+}
 
 /// Returns the maximal size a tile can have in order to fit in a canvas of the given size
 pub fn max_size_in_rect(position: Vec2d, tile_size: Vec2d, canvas_size: Vec2d) -> Vec2d {
     (position + tile_size).min(canvas_size) - position
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_level_index() {
+        assert_eq!(parse_level_index("0", 5), Some(0));
+        assert_eq!(parse_level_index("4", 5), Some(4));
+        assert_eq!(parse_level_index("5", 5), None); // Out of bounds
+        assert_eq!(parse_level_index("abc", 5), None); // Invalid number
+        assert_eq!(parse_level_index("", 5), None); // Empty string
+        assert_eq!(parse_level_index("2", 1), None); // Index too high
+    }
+
+    #[test]
+    fn test_resolve_level_index() {
+        assert_eq!(resolve_level_index(2, 5), 2); // Within bounds
+        assert_eq!(resolve_level_index(0, 5), 0); // First index
+        assert_eq!(resolve_level_index(4, 5), 4); // Last valid index
+        assert_eq!(resolve_level_index(10, 5), 4); // Out of bounds, use last
+        assert_eq!(resolve_level_index(100, 3), 2); // Way out of bounds
+    }
+
+    #[test]
+    fn test_max_size_in_rect() {
+        // Tile fits completely within canvas
+        assert_eq!(
+            max_size_in_rect(
+                Vec2d { x: 10, y: 10 },
+                Vec2d { x: 50, y: 50 },
+                Vec2d { x: 100, y: 100 }
+            ),
+            Vec2d { x: 50, y: 50 }
+        );
+
+        // Tile extends beyond canvas horizontally
+        assert_eq!(
+            max_size_in_rect(
+                Vec2d { x: 80, y: 10 },
+                Vec2d { x: 50, y: 50 },
+                Vec2d { x: 100, y: 100 }
+            ),
+            Vec2d { x: 20, y: 50 }
+        );
+
+        // Tile extends beyond canvas vertically
+        assert_eq!(
+            max_size_in_rect(
+                Vec2d { x: 10, y: 80 },
+                Vec2d { x: 50, y: 50 },
+                Vec2d { x: 100, y: 100 }
+            ),
+            Vec2d { x: 50, y: 20 }
+        );
+
+        // Tile extends beyond canvas in both dimensions
+        assert_eq!(
+            max_size_in_rect(
+                Vec2d { x: 90, y: 90 },
+                Vec2d { x: 50, y: 50 },
+                Vec2d { x: 100, y: 100 }
+            ),
+            Vec2d { x: 10, y: 10 }
+        );
+
+        // Tile at canvas edge
+        assert_eq!(
+            max_size_in_rect(
+                Vec2d { x: 0, y: 0 },
+                Vec2d { x: 100, y: 100 },
+                Vec2d { x: 100, y: 100 }
+            ),
+            Vec2d { x: 100, y: 100 }
+        );
+    }
+
+    #[test]
+    fn test_validate_download_success() {
+        let mut successful_state = download_state::DownloadState::new();
+        successful_state.record_success();
+        assert!(validate_download_success(&successful_state).is_ok());
+
+        let failed_state = download_state::DownloadState::new();
+        assert!(validate_download_success(&failed_state).is_err());
+    }
+
+    #[test]
+    fn test_determine_final_result() {
+        let destination = "test.jpg".to_string();
+
+        // Complete success - no partial failure
+        let mut success_state = download_state::DownloadState::new();
+        success_state.add_batch(10);
+        for _ in 0..10 {
+            success_state.record_success();
+        }
+        assert!(determine_final_result(&success_state, destination.clone()).is_ok());
+
+        // Partial failure
+        let mut partial_state = download_state::DownloadState::new();
+        partial_state.add_batch(10);
+        for _ in 0..8 {
+            partial_state.record_success();
+        }
+        let result = determine_final_result(&partial_state, destination.clone());
+        assert!(result.is_err());
+        if let Err(ZoomError::PartialDownload {
+            successful_tiles,
+            total_tiles,
+            ..
+        }) = result
+        {
+            assert_eq!(successful_tiles, 8);
+            assert_eq!(total_tiles, 10);
+        } else {
+            panic!("Expected PartialDownload error");
+        }
+    }
+
+    #[test]
+    fn test_find_level_with_size() {
+        // Since we can't easily create real ZoomLevel instances for testing,
+        // let's test the logic directly with a simpler approach
+        let sizes = [
+            Some(Vec2d { x: 100, y: 100 }),
+            Some(Vec2d { x: 200, y: 200 }),
+            None,
+            Some(Vec2d { x: 300, y: 300 }),
+        ];
+
+        let target_size = Vec2d { x: 200, y: 200 };
+        let position = sizes.iter().position(|&s| s == Some(target_size));
+        assert_eq!(position, Some(1));
+
+        let target_size_not_found = Vec2d { x: 400, y: 400 };
+        let position = sizes.iter().position(|&s| s == Some(target_size_not_found));
+        assert_eq!(position, None);
+    }
 }

@@ -1,5 +1,7 @@
 use std::error::Error;
+use std::fmt;
 
+use crate::dezoomer::TileReference;
 use crate::encoder::tile_buffer::TileBufferMsg;
 use custom_error::custom_error;
 use reqwest::{self, header};
@@ -64,4 +66,26 @@ where
     E: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     std::io::Error::other(e)
+}
+
+#[derive(Debug)]
+pub struct TileDownloadError {
+    pub tile_reference: TileReference,
+    pub cause: ZoomError,
+}
+
+impl fmt::Display for TileDownloadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Unable to download tile \'{}\'. Cause: {}",
+            self.tile_reference.url, self.cause
+        )
+    }
+}
+
+impl Error for TileDownloadError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.cause)
+    }
 }

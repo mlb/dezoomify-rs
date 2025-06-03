@@ -14,8 +14,8 @@ use crate::arguments::Arguments;
 use crate::binary_display::display_bytes;
 use crate::dezoomer::{PostProcessFn, TileReference};
 use crate::errors::BufferToImageError;
+use crate::errors::{TileDownloadError, ZoomError};
 use crate::tile::{Tile, load_image_with_metadata};
-use crate::{TileDownloadError, ZoomError};
 
 /// Fetch data, either from an URL or a path to a local file.
 /// If uri doesnt start with "http(s)://", it is considered to be a path
@@ -212,8 +212,8 @@ fn test_resolve_relative() {
         format!("/a{}c/d", MAIN_SEPARATOR)
     );
     assert_eq!(
-        resolve_relative("C:\\X", "c/d"),
-        format!("C:\\X{}c/d", MAIN_SEPARATOR)
+        resolve_relative("C:\\\\X", "c/d"),
+        format!("C:\\\\X{}c/d", MAIN_SEPARATOR)
     );
     assert_eq!(
         resolve_relative("/a/b", "http://example.com/x"),
