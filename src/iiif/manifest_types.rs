@@ -6,9 +6,11 @@ use crate::network::resolve_relative;
 // Helper for potentially multilingual labels
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
+#[derive(Default)]
 pub enum IiifLabel {
     String(String),
     Map(HashMap<String, Vec<String>>),
+    #[default]
     None, // Represents JSON null or a deliberately empty label
 }
 
@@ -35,11 +37,6 @@ impl IiifLabel {
 }
 
 // Default implementation to handle missing labels gracefully via #[serde(default)]
-impl Default for IiifLabel {
-    fn default() -> Self {
-        IiifLabel::None
-    }
-}
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Manifest {

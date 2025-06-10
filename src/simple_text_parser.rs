@@ -3,6 +3,26 @@ use std::collections::HashMap;
 use std::path::Path;
 use url::Url;
 
+/// Simple percent decoding for common URL-encoded characters
+fn simple_percent_decode(input: &str) -> String {
+    input.replace("%20", " ")
+         .replace("%21", "!")
+         .replace("%22", "\"")
+         .replace("%23", "#")
+         .replace("%24", "$")
+         .replace("%25", "%")
+         .replace("%26", "&")
+         .replace("%27", "'")
+         .replace("%28", "(")
+         .replace("%29", ")")
+         .replace("%2A", "*")
+         .replace("%2B", "+")
+         .replace("%2C", ",")
+         .replace("%2D", "-")
+         .replace("%2E", ".")
+         .replace("%2F", "/")
+}
+
 /// A parser for simple text files where each non-empty, non-comment line is treated as a URL.
 #[derive(Default, Debug)]
 pub struct SimpleTextFileBulkParser;
@@ -41,19 +61,28 @@ impl BulkInputParser for SimpleTextFileBulkParser {
             template_vars.insert("url".to_string(), url_str.clone());
 
             let filename_stem_from_url = match Url::parse(&url_str) {
-                Ok(parsed_url) => parsed_url
-                    .path_segments()
-                    .and_then(|segments| segments.last())
-                    .filter(|s| !s.is_empty()) // Ensure segment is not empty (e.g. from "http://host.com/")
-                    .map(|name| {
-                        Path::new(name)
-                            .file_stem()
-                            .map_or_else(
-                                || name.to_string(), // Use full segment if no stem (e.g. ".bashrc", "nodot")
-                                |s| s.to_string_lossy().into_owned(),
-                            )
-                    })
-                    .unwrap_or_else(|| format!("image_{}", index)), // Fallback if no path segment or empty
+                Ok(parsed_url) => {
+                    if let Some(segments) = parsed_url.path_segments() {
+                        let segments: Vec<&str> = segments.collect();
+                        // Find the last non-empty segment
+                        let last_non_empty = segments.iter().rev().find(|s| !s.is_empty());
+                        
+                        if let Some(name) = last_non_empty {
+                            // Simple percent decoding for common cases like %20 -> space
+                            let decoded_name = simple_percent_decode(name);
+                            Path::new(&decoded_name)
+                                .file_stem()
+                                .map_or_else(
+                                    || decoded_name.to_string(), // Use full segment if no stem (e.g. ".bashrc", "nodot")
+                                    |s| s.to_string_lossy().into_owned(),
+                                )
+                        } else {
+                            format!("image_{}", index) // Fallback if no non-empty segments
+                        }
+                    } else {
+                        format!("image_{}", index) // Fallback if no path segments
+                    }
+                },
                 Err(_) => format!("image_{}", index), // Fallback if URL parsing fails
             };
 

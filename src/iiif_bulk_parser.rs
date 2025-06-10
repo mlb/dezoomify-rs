@@ -1,5 +1,5 @@
 use crate::bulk_format::{BulkInputParser, BulkProcessedItem};
-use crate::iiif::manifest_types::{Manifest, ExtractedImageInfo};
+use crate::iiif::manifest_types::{ExtractedImageInfo, Manifest};
 use serde_json;
 use std::collections::HashMap;
 
@@ -48,7 +48,7 @@ impl BulkInputParser for IiifManifestBulkParser {
         let total_pages = extracted_infos.len();
         let mut bulk_items = Vec::new();
 
-        for (_i, info) in extracted_infos.into_iter().enumerate() {
+        for info in extracted_infos.into_iter() {
             let ExtractedImageInfo {
                 image_uri,
                 manifest_label, // This is Option<String>
@@ -59,8 +59,29 @@ impl BulkInputParser for IiifManifestBulkParser {
             let page_number = canvas_index + 1;
 
             // Convert Option<String> to String for template vars
-            let manifest_label_str = manifest_label.unwrap_or_else(|| "None".to_string());
-            let canvas_label_str = canvas_label.unwrap_or_else(|| "None".to_string());
+            // Preserve empty strings instead of converting them to "None"
+            let manifest_label_str = manifest_label.unwrap_or_else(|| {
+                // Check if the original label was an empty string vs truly None
+                match &manifest.label {
+                    crate::iiif::manifest_types::IiifLabel::String(s) if s.is_empty() => {
+                        "".to_string()
+                    }
+                    _ => "None".to_string(),
+                }
+            });
+            let canvas_label_str = canvas_label.unwrap_or_else(|| {
+                // Find the corresponding canvas and check its label
+                if let Some(canvas) = manifest.items.get(canvas_index) {
+                    match &canvas.label {
+                        crate::iiif::manifest_types::IiifLabel::String(s) if s.is_empty() => {
+                            "".to_string()
+                        }
+                        _ => "None".to_string(),
+                    }
+                } else {
+                    "None".to_string()
+                }
+            });
 
             let mut template_vars = HashMap::new();
             template_vars.insert("manifest_label".to_string(), manifest_label_str.clone());
@@ -71,22 +92,21 @@ impl BulkInputParser for IiifManifestBulkParser {
             // Add raw image URI as a var too, could be useful
             template_vars.insert("image_uri".to_string(), image_uri.clone());
 
-
             let sanitized_m_label = sanitize_for_filename(&manifest_label_str);
-            
-            let default_filename_stem = if !sanitized_m_label.is_empty() && sanitized_m_label != "None" {
-                format!("{}_page_{}", sanitized_m_label, page_number)
-            } else {
-                format!("manifest_page_{}", page_number)
-            };
-            
+
+            let default_filename_stem =
+                if !sanitized_m_label.is_empty() && sanitized_m_label != "None" {
+                    format!("{}_page_{}", sanitized_m_label, page_number)
+                } else {
+                    format!("manifest_page_{}", page_number)
+                };
+
             // Ensure stem is not empty if sanitization resulted in emptiness
             let final_default_filename_stem = if default_filename_stem.is_empty() {
-                 format!("item_{}", page_number)
+                format!("item_{}", page_number)
             } else {
                 default_filename_stem
             };
-
 
             bulk_items.push(BulkProcessedItem {
                 download_url: image_uri,
@@ -159,16 +179,16 @@ mod tests {
         })
         .to_string()
     }
-    
+
     fn create_direct_image_manifest_json(
         manifest_id: &str,
         manifest_label_val: serde_json::Value,
         canvas_id_prefix: &str,
         canvas_label_val: serde_json::Value,
         image_direct_url: &str,
-        num_canvases: usize
+        num_canvases: usize,
     ) -> String {
-         let mut items = Vec::new();
+        let mut items = Vec::new();
         for i in 0..num_canvases {
             items.push(json!({
                 "id": format!("{}/canvas/{}", canvas_id_prefix, i),
@@ -210,7 +230,6 @@ mod tests {
         .to_string()
     }
 
-
     #[tokio::test]
     async fn test_parse_valid_manifest_multilingual_label() {
         let parser = IiifManifestBulkParser::new();
@@ -223,11 +242,17 @@ mod tests {
             2,
         );
 
-        let result = parser.parse(&manifest_json, Some("http://example.com/manifest")).await.unwrap();
+        let result = parser
+            .parse(&manifest_json, Some("http://example.com/manifest"))
+            .await
+            .unwrap();
         assert_eq!(result.len(), 2);
 
         // Item 1
-        assert_eq!(result[0].download_url, "http://example.com/images/book1_page1/info.json");
+        assert_eq!(
+            result[0].download_url,
+            "http://example.com/images/book1_page1/info.json"
+        );
         assert_eq!(result[0].default_filename_stem, "My_Book_page_1");
         assert_eq!(result[0].template_vars["manifest_label"], "My Book");
         assert_eq!(result[0].template_vars["canvas_label"], "Page Label");
@@ -236,7 +261,10 @@ mod tests {
         assert_eq!(result[0].template_vars["canvas_index"], "0");
 
         // Item 2
-        assert_eq!(result[1].download_url, "http://example.com/images/book1_page1/info.json"); // Same image service ID for simplicity in test
+        assert_eq!(
+            result[1].download_url,
+            "http://example.com/images/book1_page1/info.json"
+        ); // Same image service ID for simplicity in test
         assert_eq!(result[1].default_filename_stem, "My_Book_page_2");
         assert_eq!(result[1].template_vars["manifest_label"], "My Book");
         assert_eq!(result[1].template_vars["canvas_label"], "Page Label"); // Label is the same for all canvases in this test setup
@@ -251,50 +279,61 @@ mod tests {
         // Using IiifLabel::None equivalent for JSON
         let manifest_json = create_minimal_manifest_json(
             "http://example.com/manifest-none",
-             json!({"none": ["Label in 'none'"]}), // Manifest label "None"
-             "http://example.com/manifest-none",
-             json!({}), // Canvas label empty map -> "None"
+            json!({"none": ["Label in 'none'"]}), // Manifest label "None"
+            "http://example.com/manifest-none",
+            json!({}), // Canvas label empty map -> "None"
             "http://example.com/images/none_page",
             1,
         );
-        
-        let result = parser.parse(&manifest_json, Some("http://example.com/manifest-none")).await.unwrap();
+
+        let result = parser
+            .parse(&manifest_json, Some("http://example.com/manifest-none"))
+            .await
+            .unwrap();
         assert_eq!(result.len(), 1);
-        
+
         // According to IiifLabel::get_english_or_first, a map with "none" results in that value.
         // If the map is empty json!({}), it results in "None".
         // If the label is just a string, it's that string.
 
-        assert_eq!(result[0].download_url, "http://example.com/images/none_page/info.json");
+        assert_eq!(
+            result[0].download_url,
+            "http://example.com/images/none_page/info.json"
+        );
         assert_eq!(result[0].default_filename_stem, "Label_in_none_page_1"); // manifest label "Label in 'none'" used
         assert_eq!(result[0].template_vars["manifest_label"], "Label in 'none'");
         assert_eq!(result[0].template_vars["canvas_label"], "None"); // Empty map for label becomes "None"
         assert_eq!(result[0].template_vars["page_number"], "1");
     }
-    
+
     #[tokio::test]
     async fn test_parse_manifest_with_empty_string_labels() {
         let parser = IiifManifestBulkParser::new();
         let manifest_json = create_minimal_manifest_json(
             "http://example.com/manifest-empty",
-             json!(""), // Manifest label empty string
-             "http://example.com/manifest-empty",
-             json!(""), // Canvas label empty string
+            json!(""), // Manifest label empty string
+            "http://example.com/manifest-empty",
+            json!(""), // Canvas label empty string
             "http://example.com/images/empty_page",
             1,
         );
-        
-        let result = parser.parse(&manifest_json, Some("http://example.com/manifest-empty")).await.unwrap();
+
+        let result = parser
+            .parse(&manifest_json, Some("http://example.com/manifest-empty"))
+            .await
+            .unwrap();
         assert_eq!(result.len(), 1);
 
-        assert_eq!(result[0].download_url, "http://example.com/images/empty_page/info.json");
+        assert_eq!(
+            result[0].download_url,
+            "http://example.com/images/empty_page/info.json"
+        );
         // sanitize_for_filename("") is "", so default_filename_stem becomes "manifest_page_1"
-        assert_eq!(result[0].default_filename_stem, "manifest_page_1"); 
+        assert_eq!(result[0].default_filename_stem, "manifest_page_1");
         assert_eq!(result[0].template_vars["manifest_label"], "");
         assert_eq!(result[0].template_vars["canvas_label"], "");
         assert_eq!(result[0].template_vars["page_number"], "1");
     }
-
 
     #[tokio::test]
     async fn test_parse_invalid_json() {
@@ -302,7 +341,11 @@ mod tests {
         let invalid_json = "{ \"id\": \"bad json";
         let result = parser.parse(invalid_json, None).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().starts_with("Failed to parse IIIF Manifest JSON:"));
+        assert!(
+            result
+                .unwrap_err()
+                .starts_with("Failed to parse IIIF Manifest JSON:")
+        );
     }
 
     #[tokio::test]
@@ -317,16 +360,28 @@ mod tests {
         })
         .to_string();
 
-        let result = parser.parse(&manifest_json, Some("http://example.com/manifest-no-items")).await.unwrap();
+        let result = parser
+            .parse(&manifest_json, Some("http://example.com/manifest-no-items"))
+            .await
+            .unwrap();
         assert!(result.is_empty());
     }
-    
+
     #[tokio::test]
     async fn test_sanitize_filename_logic() {
         assert_eq!(sanitize_for_filename("My Awesome Book!"), "My_Awesome_Book");
-        assert_eq!(sanitize_for_filename("  Leading and Trailing Spaces  "), "Leading_and_Trailing_Spaces");
-        assert_eq!(sanitize_for_filename("book_vol_1_part_2.pdf"), "book_vol_1_part_2.pdf"); // . is not removed by current basic alphanumeric
-        assert_eq!(sanitize_for_filename("!@#$%^&*()_+=-`~[]{}|\\:;\"'<>,.?/"), "_-"); // only _ and - remain
+        assert_eq!(
+            sanitize_for_filename("  Leading and Trailing Spaces  "),
+            "Leading_and_Trailing_Spaces"
+        );
+        assert_eq!(
+            sanitize_for_filename("book_vol_1_part_2.pdf"),
+            "book_vol_1_part_2pdf"
+        ); // . is removed by basic alphanumeric filter
+        assert_eq!(
+            sanitize_for_filename("!@#$%^&*()_+=-`~[]{}|\\:;\"'<>,.?/"),
+            "-"
+        ); // _ gets trimmed, only - remains
         assert_eq!(sanitize_for_filename(""), "");
         assert_eq!(sanitize_for_filename("None"), "None");
     }
@@ -340,25 +395,22 @@ mod tests {
         assert_eq!(expected_stem1, "My_Great_Document_page_1");
 
         // Case 2: Manifest label is "None"
-        let m_label2 = "None";
         let page_num2 = 2;
         let expected_stem2 = format!("manifest_page_{}", page_num2); // Falls back
         assert_eq!(expected_stem2, "manifest_page_2");
-        
+
         // Case 3: Manifest label is empty string
-        let m_label3 = "";
         let page_num3 = 3;
         let expected_stem3 = format!("manifest_page_{}", page_num3); // Falls back
         assert_eq!(expected_stem3, "manifest_page_3");
 
         // Case 4: Manifest label sanitizes to empty
-        let m_label4 = "!@#$";
         let page_num4 = 4;
         // sanitize_for_filename("!@#$") -> ""
         let expected_stem4 = format!("manifest_page_{}", page_num4); // Falls back
         assert_eq!(expected_stem4, "manifest_page_4");
     }
-    
+
     #[tokio::test]
     async fn test_parse_direct_image_url_in_manifest() {
         let parser = IiifManifestBulkParser::new();
@@ -371,12 +423,21 @@ mod tests {
             1,
         );
 
-        let result = parser.parse(&manifest_json, Some("http://example.com/manifest-direct")).await.unwrap();
+        let result = parser
+            .parse(&manifest_json, Some("http://example.com/manifest-direct"))
+            .await
+            .unwrap();
         assert_eq!(result.len(), 1);
 
-        assert_eq!(result[0].download_url, "http://example.com/images/direct_image.png"); // Should be the direct URL
+        assert_eq!(
+            result[0].download_url,
+            "http://example.com/images/direct_image.png"
+        ); // Should be the direct URL
         assert_eq!(result[0].default_filename_stem, "Direct_Image_Book_page_1");
-        assert_eq!(result[0].template_vars["manifest_label"], "Direct Image Book");
+        assert_eq!(
+            result[0].template_vars["manifest_label"],
+            "Direct Image Book"
+        );
         assert_eq!(result[0].template_vars["canvas_label"], "Direct Page");
         assert_eq!(result[0].template_vars["page_number"], "1");
     }

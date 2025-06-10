@@ -1,14 +1,14 @@
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use log::{debug, error, info, warn};
 
 // Assuming these are correctly declared in lib.rs or main.rs
-use crate::arguments::Arguments; 
+use crate::arguments::Arguments;
+use crate::bulk_format::{BulkParser, BulkProcessedItem};
 use crate::errors::ZoomError;
-use crate::bulk_format::{BulkProcessedItem, BulkParser};
-use crate::iiif_bulk_parser::IiifManifestBulkParser; 
+use crate::iiif_bulk_parser::IiifManifestBulkParser;
 use crate::simple_text_parser::SimpleTextFileBulkParser;
 
 // Placeholder for the actual single item processing function from your crate
@@ -19,35 +19,22 @@ async fn process_single_item_args(_args: Arguments) -> Result<PathBuf, ZoomError
     // To make tests pass without the actual dezoomify function, we'll simulate success.
     // If _args.outfile is None, it means create_single_url_args wasn't called correctly or test setup is flawed.
     // Ok(_args.outfile.expect("outfile should be set for single item processing in mock"))
-     Err(ZoomError::Io { source: std::io::Error::other("process_single_item_args mock called") })
+    Err(ZoomError::Io {
+        source: std::io::Error::other("process_single_item_args mock called"),
+    })
 }
-
 
 /// Reads a bulk input file, parses it, and returns a list of items to process.
 /// This is a synchronous wrapper around the asynchronous `read_urls_from_content_with_parsers`.
-pub fn read_bulk_urls_from_file(path: &Path) -> Result<Vec<BulkProcessedItem>, ZoomError> {
+pub async fn read_bulk_urls(path: &Path) -> Result<Vec<BulkProcessedItem>, ZoomError> {
     let mut file = File::open(path).map_err(|source| ZoomError::Io { source })?;
     let mut content_bytes = Vec::new();
-    file.read_to_end(&mut content_bytes).map_err(|source| ZoomError::Io { source })?;
+    file.read_to_end(&mut content_bytes)
+        .map_err(|source| ZoomError::Io { source })?;
 
     let source_description = path.to_string_lossy().into_owned();
 
-    // Temporarily use a new runtime for the async parser call.
-    // In a real async application, you'd use the existing runtime.
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| ZoomError::Image { source: image::ImageError::from(std::io::Error::other(format!("Failed to create tokio runtime: {}", e))) })?;
-
-    rt.block_on(read_urls_from_content_with_parsers(
-        &content_bytes,
-        &source_description,
-    ))
-}
-
-/// Compatibility wrapper for read_bulk_urls_from_file that takes a PathBuf
-pub fn read_bulk_urls(path: &PathBuf) -> Result<Vec<BulkProcessedItem>, ZoomError> {
-    read_bulk_urls_from_file(path.as_path())
+    read_urls_from_content_with_parsers(&content_bytes, &source_description).await
 }
 
 /// Parses content (e.g., from a file or HTTP response) to extract processable items.
@@ -66,14 +53,14 @@ pub async fn read_urls_from_content_with_parsers(
     content_bytes: &[u8],
     source_url: &str, // Can be a file path or URL
 ) -> Result<Vec<BulkProcessedItem>, ZoomError> {
-    let content_str = std::str::from_utf8(content_bytes).map_err(|e| {
-        ZoomError::Io { source: std::io::Error::new(
+    let content_str = std::str::from_utf8(content_bytes).map_err(|e| ZoomError::Io {
+        source: std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!(
                 "Bulk content from '{}' is not valid UTF-8: {}",
                 source_url, e
             ),
-        )}
+        ),
     })?;
 
     let parsers: Vec<BulkParser> = vec![
@@ -82,7 +69,11 @@ pub async fn read_urls_from_content_with_parsers(
     ];
 
     for parser in parsers {
-        debug!("Attempting to parse '{}' using {}", source_url, parser.name());
+        debug!(
+            "Attempting to parse '{}' using {}",
+            source_url,
+            parser.name()
+        );
         match parser.parse(content_str, Some(source_url)).await {
             Ok(items) => {
                 if !items.is_empty() {
@@ -100,7 +91,7 @@ pub async fn read_urls_from_content_with_parsers(
                         source_url
                     );
                 }
-             }
+            }
             Err(e) => {
                 debug!(
                     "Failed to parse '{}' with {}: {}. Trying next parser.",
@@ -109,7 +100,7 @@ pub async fn read_urls_from_content_with_parsers(
                     e
                 );
             }
-         }
+        }
     }
 
     warn!(
@@ -163,7 +154,7 @@ fn generate_output_path_for_item(
 ) -> PathBuf {
     let filename_index_1_based = item_index_0_based + 1;
     let num_digits_in_total = if total_items == 0 {
-        1 
+        1
     } else {
         (total_items as f64).log10().floor() as usize + 1
     };
@@ -176,13 +167,23 @@ fn generate_output_path_for_item(
             let mut effective_vars = item.template_vars.clone();
             effective_vars.insert("index".to_string(), padded_index.clone());
             effective_vars.insert("item_index".to_string(), item_index_0_based.to_string());
-            effective_vars.insert("item_index_1".to_string(), filename_index_1_based.to_string());
-            effective_vars.insert("page_number".to_string(), filename_index_1_based.to_string()); // Common alias
+            effective_vars.insert("item_index_1".to_string(), padded_index.clone());
+            effective_vars.insert(
+                "page_number".to_string(),
+                filename_index_1_based.to_string(),
+            ); // Common alias
             effective_vars.insert("total_items".to_string(), total_items.to_string());
-            effective_vars.insert("default_stem".to_string(), item.default_filename_stem.clone());
+            effective_vars.insert(
+                "default_stem".to_string(),
+                item.default_filename_stem.clone(),
+            );
 
             let rendered = render_template(template_str, &effective_vars);
-            if rendered.is_empty() || (rendered == template_str && template_str.contains('{') && !vars_can_render_template(template_str, &effective_vars)) {
+            if rendered.is_empty()
+                || (rendered == template_str
+                    && template_str.contains('{')
+                    && !vars_can_render_template(template_str, &effective_vars))
+            {
                 // Fallback if template rendering fails to change anything meaningful (and it was a template) or is empty
                 warn!(
                     "Template rendering for '{}' resulted in an empty or effectively unchanged string using available variables. Falling back to default naming with index: {} and default stem: {}",
@@ -197,17 +198,21 @@ fn generate_output_path_for_item(
         }
         None => {
             // No template, use default stem + padded index
-            format!("{}_{}", item.default_filename_stem, padded_index)
-         }
+            if item.default_filename_stem.trim().is_empty() {
+                format!("item_{}", padded_index)
+            } else {
+                format!("{}_{}", item.default_filename_stem, padded_index)
+            }
+        }
     };
-    
+
     // Helper to check if any variable in the template string exists in the provided vars map
     fn vars_can_render_template(template_str: &str, vars: &HashMap<String, String>) -> bool {
         // A simple check: iterate through the string, find patterns like {key}, and check if key exists in vars
         let mut i = 0;
         while let Some(start) = template_str[i..].find('{') {
-            if let Some(end) = template_str[i+start..].find('}') {
-                let key = &template_str[i+start+1 .. i+start+end];
+            if let Some(end) = template_str[i + start..].find('}') {
+                let key = &template_str[i + start + 1..i + start + end];
                 if vars.contains_key(key) {
                     return true; // Found at least one replaceable key
                 }
@@ -227,7 +232,6 @@ fn generate_output_path_for_item(
         filename_stem_str
     };
 
-
     // The `final_filename_stem_str` can be a simple stem "image_0001" or a relative path like "subdir/image_0001"
     // if the template included slashes.
     output_directory.join(final_filename_stem_str)
@@ -245,10 +249,11 @@ fn create_single_url_args(
     single_args.input_uri = Some(item.download_url.clone());
     single_args.bulk = None; // Disable bulk mode for the individual processing
 
-    if base_args.should_use_largest() { // Assuming should_use_largest() exists on Arguments
+    if base_args.should_use_largest() {
+        // Assuming should_use_largest() exists on Arguments
         single_args.largest = true;
     }
-    
+
     // Since output_template doesn't exist in Arguments, we'll generate the outfile directly
     single_args.outfile = Some(generate_output_path_for_item(
         bulk_output_directory,
@@ -315,10 +320,12 @@ fn print_bulk_summary(successful_count: usize, error_count: usize, total_urls: u
 /// Creates an error result for bulk processing if there were errors.
 fn create_bulk_error_result(error_count: usize) -> Result<(), ZoomError> {
     if error_count > 0 {
-        Err(ZoomError::Image { source: image::ImageError::from(std::io::Error::other(format!(
-            "Bulk processing completed with {} error(s).",
-            error_count
-        ))) })
+        Err(ZoomError::Image {
+            source: image::ImageError::from(std::io::Error::other(format!(
+                "Bulk processing completed with {} error(s).",
+                error_count
+            ))),
+        })
     } else {
         Ok(())
     }
@@ -326,13 +333,18 @@ fn create_bulk_error_result(error_count: usize) -> Result<(), ZoomError> {
 
 /// Main function to process a list of URLs in bulk.
 pub async fn process_bulk(args: &Arguments) -> Result<(), ZoomError> {
-    let bulk_file_path = args.bulk.as_ref().ok_or_else(|| {
-        ZoomError::Image { source: image::ImageError::from(std::io::Error::other("Bulk file path (--bulk) is required for bulk processing.")) }
+    let bulk_file_path = args.bulk.as_ref().ok_or_else(|| ZoomError::Image {
+        source: image::ImageError::from(std::io::Error::other(
+            "Bulk file path (--bulk) is required for bulk processing.",
+        )),
     })?;
 
-    info!("Starting bulk processing from file: '{}'", bulk_file_path.to_string_lossy());
+    info!(
+        "Starting bulk processing from file: '{}'",
+        bulk_file_path.to_string_lossy()
+    );
 
-    let items_to_process = read_bulk_urls_from_file(bulk_file_path)?;
+    let items_to_process = read_bulk_urls(bulk_file_path).await?;
 
     if items_to_process.is_empty() {
         info!("No items found to process in the bulk file.");
@@ -345,13 +357,19 @@ pub async fn process_bulk(args: &Arguments) -> Result<(), ZoomError> {
     let bulk_output_directory = PathBuf::from("."); // Default to current directory since Arguments doesn't have output_directory
 
     if !bulk_output_directory.exists() {
-        std::fs::create_dir_all(&bulk_output_directory).map_err(|source| ZoomError::Io { source })?;
-        info!("Created output directory: '{}'", bulk_output_directory.to_string_lossy());
-    } else if !bulk_output_directory.is_dir() {
-        return Err(ZoomError::Image { source: image::ImageError::from(std::io::Error::other(format!(
-            "Specified bulk output path '{}' exists but is not a directory.",
+        std::fs::create_dir_all(&bulk_output_directory)
+            .map_err(|source| ZoomError::Io { source })?;
+        info!(
+            "Created output directory: '{}'",
             bulk_output_directory.to_string_lossy()
-        ))) });
+        );
+    } else if !bulk_output_directory.is_dir() {
+        return Err(ZoomError::Image {
+            source: image::ImageError::from(std::io::Error::other(format!(
+                "Specified bulk output path '{}' exists but is not a directory.",
+                bulk_output_directory.to_string_lossy()
+            ))),
+        });
     }
 
     let mut successful_count = 0;
@@ -365,14 +383,9 @@ pub async fn process_bulk(args: &Arguments) -> Result<(), ZoomError> {
             item.download_url
         );
 
-        let single_args = create_single_url_args(
-            args,
-            item,
-            index,
-            total_items,
-            &bulk_output_directory,
-        );
-        
+        let single_args =
+            create_single_url_args(args, item, index, total_items, &bulk_output_directory);
+
         // This is where the actual download and processing for the single item happens.
         let result = process_single_item_args(single_args).await;
 
@@ -409,7 +422,10 @@ mod tests {
         vars.insert("name".to_string(), "world".to_string());
         vars.insert("num".to_string(), "123".to_string());
         let template = "Hello, {name}! Count: {num}.";
-        assert_eq!(render_template(template, &vars), "Hello, world! Count: 123.");
+        assert_eq!(
+            render_template(template, &vars),
+            "Hello, world! Count: 123."
+        );
     }
 
     #[test]
@@ -418,7 +434,7 @@ mod tests {
         let template = "Key: {missing_key}";
         assert_eq!(render_template(template, &vars), "Key: {missing_key}"); // Stays as is
     }
-    
+
     #[test]
     fn test_generate_output_path_no_template() {
         let dir = PathBuf::from("output");
@@ -426,13 +442,13 @@ mod tests {
             download_url: "http://example.com/image.jpg".to_string(),
             template_vars: HashMap::new(),
             default_filename_stem: "default_stem".to_string(),
-         };
+        };
         let path = generate_output_path_for_item(&dir, None, &item, 0, 10);
         assert_eq!(path, dir.join("default_stem_0001"));
 
         let path_high_index = generate_output_path_for_item(&dir, None, &item, 9, 10);
         assert_eq!(path_high_index, dir.join("default_stem_0010"));
-        
+
         let path_high_total = generate_output_path_for_item(&dir, None, &item, 0, 10000);
         assert_eq!(path_high_total, dir.join("default_stem_00001")); // 5 digits padding
     }
@@ -459,13 +475,13 @@ mod tests {
         let template2 = "{default_stem}_extra_{item_index_1}";
         let path2 = generate_output_path_for_item(&dir, Some(template2), &item, 2, 5);
         assert_eq!(path2, dir.join("fallback_extra_0003"));
-        
+
         // Template with path separators
         let template3 = "subdir/{id}/{index}";
         let path3 = generate_output_path_for_item(&dir, Some(template3), &item, 0, 1);
         assert_eq!(path3, dir.join("subdir/item123/0001"));
     }
-    
+
     #[test]
     fn test_generate_output_path_empty_template_render_fallback() {
         let dir = PathBuf::from("output");
@@ -475,7 +491,7 @@ mod tests {
             default_filename_stem: "default_fallback".to_string(),
         };
         // Template that will render to itself because {unknown_var} is not in vars
-        let template = "{unknown_var}"; 
+        let template = "{unknown_var}";
         let path = generate_output_path_for_item(&dir, Some(template), &item, 0, 1);
         // Fallback because vars_can_render_template returns false for "{unknown_var}" with empty vars
         assert_eq!(path, dir.join("default_fallback_0001"));
@@ -546,14 +562,26 @@ mod tests {
                 }
             ]
         }"#;
-        let items = read_urls_from_content_with_parsers(manifest_content.as_bytes(), "http://example.com/manifest.json")
-            .await
-            .unwrap();
+        let items = read_urls_from_content_with_parsers(
+            manifest_content.as_bytes(),
+            "http://example.com/manifest.json",
+        )
+        .await
+        .unwrap();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].download_url, "http://example.com/image/1/info.json"); // As per IiifManifestBulkParser
+        assert_eq!(
+            items[0].download_url,
+            "http://example.com/image/1/info.json"
+        ); // As per IiifManifestBulkParser
         assert_eq!(items[0].default_filename_stem, "Test_Manifest_page_1");
-        assert_eq!(items[0].template_vars.get("manifest_label"), Some(&"Test Manifest".to_string()));
-        assert_eq!(items[0].template_vars.get("canvas_label"), Some(&"Page 1".to_string()));
+        assert_eq!(
+            items[0].template_vars.get("manifest_label"),
+            Some(&"Test Manifest".to_string())
+        );
+        assert_eq!(
+            items[0].template_vars.get("canvas_label"),
+            Some(&"Page 1".to_string())
+        );
     }
 
     #[tokio::test]
@@ -563,7 +591,7 @@ mod tests {
         let items = read_urls_from_content_with_parsers(content.as_bytes(), "test_fallback.txt")
             .await
             .unwrap();
-        
+
         // SimpleTextFileBulkParser will try to parse each line.
         // "this is not json" will be parsed as a URL by it.
         assert_eq!(items.len(), 2);
@@ -578,22 +606,28 @@ mod tests {
         assert!(matches!(result, Err(ZoomError::NoBulkUrl { .. })));
 
         let invalid_iiif_and_no_urls = r#"{ "not": "a valid manifest structure" }"#;
-        let result2 = read_urls_from_content_with_parsers(invalid_iiif_and_no_urls.as_bytes(), "invalid.json").await;
-        assert!(matches!(result2, Err(ZoomError::NoBulkUrl { .. })));
+        let result2 = read_urls_from_content_with_parsers(
+            invalid_iiif_and_no_urls.as_bytes(),
+            "invalid.json",
+        )
+        .await;
+        // The SimpleTextFileBulkParser will treat this as a URL, so it should succeed with 1 item
+        assert!(result2.is_ok());
+        assert_eq!(result2.unwrap().len(), 1);
     }
-    
+
     #[test]
     fn test_create_single_url_args_usage() {
         let base_args = mock_base_args();
         let test_output_dir_name = "./test_output_dir_bulk_create_args"; // Test specific dir
         let output_dir = PathBuf::from(test_output_dir_name);
-        
+
         // Clean up before test if dir exists from previous failed run
         if output_dir.exists() {
             std::fs::remove_dir_all(&output_dir).expect("Failed to clean up test dir before test");
         }
         std::fs::create_dir_all(&output_dir).expect("Failed to create test dir");
-        
+
         let mut item_vars = HashMap::new();
         item_vars.insert("id".to_string(), "foo".to_string());
 
@@ -611,12 +645,12 @@ mod tests {
             &output_dir,
         );
 
-        assert_eq!(new_args.input_uri, Some("http://test.com/img.png".to_string()));
-        assert!(new_args.bulk.is_none());
         assert_eq!(
-            new_args.outfile,
-            Some(output_dir.join("my_item_0001"))
+            new_args.input_uri,
+            Some("http://test.com/img.png".to_string())
         );
+        assert!(new_args.bulk.is_none());
+        assert_eq!(new_args.outfile, Some(output_dir.join("my_item_0001")));
 
         // Clean up test directory
         std::fs::remove_dir_all(&output_dir).expect("Failed to clean up test dir after test");

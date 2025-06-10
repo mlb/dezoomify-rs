@@ -150,7 +150,7 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
             std::io::ErrorKind::InvalidInput,
             "Bulk file path not set in Arguments for test_bulk_processing",
         ),
-    })?)?;
+    })?).await?;
     assert_eq!(urls.len(), 2, "Should read exactly 2 URLs from bulk file");
 
     let mut successful_count = 0;
@@ -159,7 +159,7 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
     for (index, url) in urls.iter().enumerate() {
         // Create a modified args for this specific URL
         let mut single_args = args.clone();
-        single_args.input_uri = Some(url.image_uri.clone());
+        single_args.input_uri = Some(url.download_url.clone());
         single_args.bulk = None; // Disable bulk mode for individual processing
 
         // Generate output file name with suffix
@@ -195,7 +195,7 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
                 successful_count += 1;
             }
             Err(err) => {
-                panic!("Unexpected error processing URL {}: {}", url.image_uri, err);
+                panic!("Unexpected error processing URL {}: {}", url.download_url, err);
             }
         }
     }
@@ -333,14 +333,14 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
             std::io::ErrorKind::InvalidInput,
             "Bulk file path not set in Arguments for test_bulk_mode_cli_end_to_end",
         ),
-    })?)
+    })?).await
     .expect("Should read URLs from bulk file");
     assert_eq!(urls.len(), 2, "Should read exactly 2 URLs");
     assert_eq!(
-        urls[0].image_uri,
+        urls[0].download_url,
         "testdata/zoomify/test_custom_size/ImageProperties.xml"
     );
-    assert_eq!(urls[1].image_uri, "testdata/generic/map_{{X}}_{{Y}}.jpg");
+    assert_eq!(urls[1].download_url, "testdata/generic/map_{{X}}_{{Y}}.jpg");
 
     // Test the complete bulk processing flow using the main library function
     // This simulates exactly what would happen when running the CLI
@@ -350,7 +350,7 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     for (index, url) in urls.iter().enumerate() {
         // Create arguments for individual processing (simulating main.rs logic)
         let mut single_args = parsed_args.clone();
-        single_args.input_uri = Some(url.image_uri.clone());
+        single_args.input_uri = Some(url.download_url.clone());
         single_args.bulk = None;
 
         // Apply bulk mode logic: if no level-specifying args, imply --largest
@@ -395,7 +395,7 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
                 successful_count += 1;
             }
             Err(err) => {
-                panic!("Unexpected error processing URL '{}': {}", url.image_uri, err);
+                panic!("Unexpected error processing URL '{}': {}", url.download_url, err);
             }
         }
     }
