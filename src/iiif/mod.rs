@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use custom_error::custom_error;
-use log::debug;
+use log::{debug, warn};
 
 use tile_info::ImageInfo;
 
@@ -11,6 +11,7 @@ use crate::json_utils::all_json;
 use crate::max_size_in_rect;
 
 pub mod tile_info;
+pub mod manifest_types;
 
 /// Dezoomer for the International Image Interoperability Framework.
 /// See https://iiif.io/
@@ -18,7 +19,8 @@ pub mod tile_info;
 pub struct IIIF;
 
 custom_error! {pub IIIFError
-    JsonError{source: serde_json::Error} = "Invalid IIIF info.json file: {source}"
+    JsonError{source: serde_json::Error} = "Invalid IIIF info.json file: {source}",
+    ManifestParseError{description: String} = "Could not parse IIIF manifest: {description}",
 }
 
 impl From<IIIFError> for DezoomerError {
@@ -176,7 +178,54 @@ impl std::fmt::Display for TileSizeFormatter {
 impl std::fmt::Debug for IIIFZoomLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let name = self
-            .base_url
+            .page_info
+            .id
+            .as_deref()
+            .unwrap_or_else(|| self.base_url.as_ref())
+            .split('/')
+            .next_back()
+            .and_then(|s: &str| {
+                let s = s.trim();
+                if s.is_empty() { None } else { Some(s) }
+            })
+            .unwrap_or("IIIF Image");
+        write!(f, "{name}")
+    }
+}
+
+/// Parses a IIIF Presentation API Manifest from byte content.
+///
+/// # Arguments
+/// * `bytes` - The raw byte content of the manifest file.
+/// * `manifest_url` - The original URL from which the manifest was fetched. This is crucial
+///   for resolving any relative URLs found within the manifest.
+///
+/// # Returns
+/// A `Result` containing a vector of `ExtractedImageInfo` if successful,
+/// or an `IIIFError` if parsing fails or the content is not a valid manifest.
+pub fn parse_iiif_manifest_from_bytes(
+    bytes: &[u8],
+    manifest_url: &str,
+) -> Result<Vec<manifest_types::ExtractedImageInfo>, IIIFError> {
+    let manifest: manifest_types::Manifest =
+        serde_json::from_slice(bytes).map_err(|e| IIIFError::JsonError { source: e })?;
+
+    if manifest.manifest_type != "Manifest" {
+        // While we could be more lenient, the Presentation API spec says this should be "Manifest".
+        // If it's something else, it's likely not what we expect, or a different IIIF spec.
+        warn!(
+            "Attempted to parse IIIF manifest from {} but 'type' field was '{}' instead of 'Manifest'. Proceeding, but this may indicate an incorrect file type.",
+            manifest_url, manifest.manifest_type
+        );
+    }
+    
+    Ok(manifest.extract_image_infos(manifest_url))
+}
+
+
+#[test]
+fn test_tiles() {
+    let data = br#"{
             .split('/')
             .next_back()
             .and_then(|s: &str| {
@@ -302,12 +351,157 @@ fn test_qualities() {
     }"#;
     let mut levels = zoom_levels("test.com", data).unwrap();
     let level = &mut levels[0];
-    assert_eq!(level.size_hint(), Some(Vec2d { x: 515, y: 381 }));
+    assert_eq!(level.size_hint(), Some(Vec2d { x: 515, y: 381 })); // 5156/10, 3816/10
     let tiles: Vec<String> = level.next_tiles(None).into_iter().map(|t| t.url).collect();
     assert_eq!(
         tiles,
         vec![
-            "https://images.britishart.yale.edu/iiif/fd470c3e-ead0-4878-ac97-d63295753f82/0,0,5156,3816/515,381/0/native.png",
+            "https://images.britishart.yale.edu/iiif/fd470c3e-ead0-4878-ac97-d63295753f82/0,0,5156,3816/515,381/0/native.png", // tile_width and tile_height are not used from profile here but from image_info.tile_w/h
         ]
     )
+}
+
+#[cfg(test)]
+mod manifest_parsing_tests {
+    use super::*;
+    use crate::iiif::manifest_types::ExtractedImageInfo;
+
+    #[test]
+    fn test_parse_simple_manifest_from_bytes() {
+        let manifest_url = "https://example.com/manifest.json";
+        let json_data = r#"
+        {
+          "@context": "http://iiif.io/api/presentation/3/context.json",
+          "id": "https://example.org/iiif/book1/manifest",
+          "type": "Manifest",
+          "label": { "en": [ "Book Example" ] },
+          "items": [
+            {
+              "id": "canvas1",
+              "type": "Canvas",
+              "label": { "en": [ "Page 1" ] },
+              "items": [
+                {
+                  "id": "anno_page1",
+                  "type": "AnnotationPage",
+                  "items": [
+                    {
+                      "id": "anno1",
+                      "type": "Annotation",
+                      "motivation": "painting",
+                      "body": {
+                        "id": "http://example.images/page1_img_direct.jpg",
+                        "type": "Image",
+                        "service": [
+                          {
+                            "id": "svc/page1_svc", 
+                            "type": "ImageService2"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        "#;
+        let result = parse_iiif_manifest_from_bytes(json_data.as_bytes(), manifest_url);
+        assert!(result.is_ok());
+        let infos = result.unwrap();
+        assert_eq!(infos.len(), 1);
+        assert_eq!(
+            infos[0],
+            ExtractedImageInfo {
+                image_uri: "https://example.com/svc/page1_svc/info.json".to_string(), // Resolved
+                manifest_label: Some("Book Example".to_string()),
+                canvas_label: Some("Page 1".to_string()),
+                canvas_index: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_manifest_with_relative_paths_from_bytes() {
+        let manifest_url = "https://library.example.edu/collection/item123/manifest.json";
+        let json_data = r#"
+        {
+          "id": "relative-manifest",
+          "type": "Manifest",
+          "label": { "en": ["RelPath Test"] },
+          "items": [
+            {
+              "id": "c1", "type": "Canvas", "label": {"en": ["C1 Rel Svc"]},
+              "items": [{"id": "ap1", "type": "AnnotationPage", "items": [{"id": "a1", "type": "Annotation", "motivation": "painting",
+                  "body": { "id": "../images/image1.jpg", "type": "Image", "service": [{"id": "../services/image1_svc", "type": "ImageService3"}]}
+              }]}]
+            },
+            {
+              "id": "c2", "type": "Canvas", "label": {"en": ["C2 Abs Path Svc"]},
+              "items": [{"id": "ap2", "type": "AnnotationPage", "items": [{"id": "a2", "type": "Annotation", "motivation": "painting",
+                  "body": { "id": "/img/abs_image2.png", "type": "Image", "service": [{"id": "/iiif-services/abs_image2_svc", "type": "ImageService2"}]}
+              }]}]
+            },
+            {
+              "id": "c3", "type": "Canvas", "label": {"en": ["C3 Direct Rel Img"]},
+              "items": [{"id": "ap3", "type": "AnnotationPage", "items": [{"id": "a3", "type": "Annotation", "motivation": "painting",
+                  "body": { "id": "images/cover_art.jpeg", "type": "Image" }
+              }]}]
+            }
+          ]
+        }
+        "#;
+
+        let result = parse_iiif_manifest_from_bytes(json_data.as_bytes(), manifest_url);
+        assert!(result.is_ok(), "Parsing failed: {:?}", result.err());
+        let infos = result.unwrap();
+        assert_eq!(infos.len(), 3);
+
+        assert_eq!(
+            infos[0].image_uri,
+            "https://library.example.edu/collection/services/image1_svc/info.json"
+        );
+        assert_eq!(infos[0].manifest_label, Some("RelPath Test".to_string()));
+        assert_eq!(infos[0].canvas_label, Some("C1 Rel Svc".to_string()));
+
+        assert_eq!(
+            infos[1].image_uri,
+            "https://library.example.edu/iiif-services/abs_image2_svc/info.json"
+        );
+        assert_eq!(infos[1].canvas_label, Some("C2 Abs Path Svc".to_string()));
+        
+        assert_eq!(
+            infos[2].image_uri,
+            "https://library.example.edu/collection/item123/images/cover_art.jpeg"
+        );
+        assert_eq!(infos[2].canvas_label, Some("C3 Direct Rel Img".to_string()));
+    }
+
+    #[test]
+    fn test_parse_invalid_json_manifest() {
+        let manifest_url = "https://example.com/invalid.json";
+        let json_data = r#"{ "id": "test", "type": "Manifest", items: [ -- broken json -- ] }"#;
+        let result = parse_iiif_manifest_from_bytes(json_data.as_bytes(), manifest_url);
+        assert!(result.is_err());
+        match result.err().unwrap() {
+            IIIFError::JsonError { .. } => {} // Expected
+            e => panic!("Expected JsonError, got {:?}", e),
+        }
+    }
+    
+    #[test]
+    fn test_parse_json_not_a_manifest_type() {
+        let manifest_url = "https://example.com/not_a_manifest.json";
+        let json_data = r#"{ "id": "test", "type": "NotAManifest", "items": [] }"#;
+        // This should parse fine based on struct leniency, but we log a warning.
+        // The function itself should succeed if the structure is parsable into Manifest.
+        let result = parse_iiif_manifest_from_bytes(json_data.as_bytes(), manifest_url);
+        assert!(result.is_ok()); 
+        // The `extract_image_infos` method would then be called on this.
+        // For a more strict check, one might add an explicit error if manifest.manifest_type != "Manifest".
+        // The current implementation logs a warning and proceeds.
+        let infos = result.unwrap();
+        assert_eq!(infos.len(), 0); // No items that would yield images.
+    }
 }

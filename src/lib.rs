@@ -28,6 +28,7 @@ use crate::output_file::reserve_output_file;
 mod arguments;
 mod binary_display;
 pub mod bulk;
+pub mod bulk_format;
 pub mod dezoomer;
 pub(crate) mod download_state;
 mod encoder;
@@ -50,6 +51,9 @@ pub mod nypl;
 pub mod pff;
 mod throttler;
 pub mod zoomify;
+
+pub mod iiif_bulk_parser;
+pub mod simple_text_parser;
 
 fn stdin_line() -> Result<String, ZoomError> {
     let stdin = std::io::stdin();
