@@ -1,5 +1,5 @@
 use crate::{Arguments, ZoomError, dezoomify};
-use colour::{green_ln, red_ln, yellow_ln};
+use log::{error, info, warn};
 use std::path::{Path, PathBuf};
 
 /// Reads URLs from the bulk file specified in arguments.
@@ -66,7 +66,7 @@ fn handle_single_url_result(
 ) {
     match result {
         Ok(saved_as) => {
-            green_ln!(
+            info!(
                 "[{}/{}] Image successfully saved to '{}'",
                 index + 1,
                 total_urls,
@@ -75,11 +75,11 @@ fn handle_single_url_result(
             *successful_count += 1;
         }
         Err(err @ ZoomError::PartialDownload { .. }) => {
-            yellow_ln!("[{}/{}] Partial download: {}", index + 1, total_urls, err);
+            warn!("[{}/{}] Partial download: {}", index + 1, total_urls, err);
             *successful_count += 1; // Partial downloads are still considered successful
         }
         Err(err) => {
-            red_ln!("[{}/{}] ERROR: {}", index + 1, total_urls, err);
+            error!("[{}/{}] ERROR: {}", index + 1, total_urls, err);
             *error_count += 1;
         }
     }
@@ -87,10 +87,10 @@ fn handle_single_url_result(
 
 /// Prints the final bulk processing summary
 fn print_bulk_summary(successful_count: usize, error_count: usize, total_urls: usize) {
-    println!("\nBulk processing completed:");
-    println!("  Successful: {}", successful_count);
-    println!("  Errors: {}", error_count);
-    println!("  Total: {}", total_urls);
+    info!("\nBulk processing completed:");
+    info!("  Successful: {}", successful_count);
+    info!("  Errors: {}", error_count);
+    info!("  Total: {}", total_urls);
 }
 
 /// Creates an error result for bulk processing if there were errors
@@ -137,14 +137,14 @@ pub async fn process_bulk(args: &Arguments) -> Result<(), ZoomError> {
     let urls = read_bulk_urls(bulk_file_path)?;
     let total_urls = urls.len();
 
-    println!("Processing {} URLs in bulk mode", total_urls);
+    info!("Processing {total_urls} URLs in bulk mode");
 
     let mut successful_count = 0;
     let mut error_count = 0;
     let bulk_output_file = resolve_bulk_output_file(args);
 
     for (index, url) in urls.iter().enumerate() {
-        println!("\n[{}/{}] Processing: {}", index + 1, total_urls, url);
+        info!("\n[{}/{}] Processing: {}", index + 1, total_urls, url);
 
         let single_args = create_single_url_args(args, url, index, &bulk_output_file);
         let result = dezoomify(&single_args).await;

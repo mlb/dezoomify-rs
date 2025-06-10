@@ -10,7 +10,7 @@ use crate::tile::Tile;
 use crate::vec2d::Vec2d; // This is a public function from lib.rs
 
 use futures::stream::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use log::debug;
 use std::default::Default;
 
@@ -69,9 +69,11 @@ pub(crate) struct ProgressManager {
 
 impl ProgressManager {
     pub(crate) fn new() -> Self {
-        Self {
-            progress: progress_bar(10), // Default initial size, will be updated
+        let progress = progress_bar(10); // Default initial size, will be updated
+        if !log::log_enabled!(log::Level::Info) {
+            progress.set_draw_target(ProgressDrawTarget::hidden());
         }
+        Self { progress }
     }
 
     pub(crate) fn set_total_tiles(&self, total: u64) {

@@ -3,7 +3,7 @@ use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 
-use log::info;
+use log::debug;
 use sanitize_filename_reader_friendly::sanitize;
 
 use crate::{Vec2d, ZoomError};
@@ -56,7 +56,7 @@ pub fn get_outname(
             if !path.exists() {
                 break;
             }
-            info!(
+            debug!(
                 "File {:?} already exists. Trying another file name...",
                 &path
             );

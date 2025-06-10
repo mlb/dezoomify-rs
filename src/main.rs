@@ -1,7 +1,8 @@
-use colour::{green_ln, red_ln, yellow_ln};
+use env_logger::TimestampPrecision;
 use human_panic::setup_panic;
 
 use dezoomify_rs::{Arguments, ZoomError, bulk, dezoomify};
+use log::{error, info, warn};
 
 #[tokio::main]
 async fn main() {
@@ -16,7 +17,7 @@ async fn main() {
         match bulk::process_bulk(&args).await {
             Ok(_) => {}
             Err(err) => {
-                red_ln!("BULK ERROR {}", err);
+                error!("{err}");
                 has_errors = true;
             }
         }
@@ -25,27 +26,24 @@ async fn main() {
         loop {
             match dezoomify(&args).await {
                 Ok(saved_as) => {
-                    green_ln!(
-                        "Image successfully saved to '{}' (current working directory: {})",
+                    info!(
+                        "Image successfully saved to '{}'",
                         saved_as.to_string_lossy(),
-                        std::env::current_dir()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|_e| "unknown".into())
                     );
                 }
                 Err(ZoomError::Io { source })
                     if source.kind() == std::io::ErrorKind::UnexpectedEof =>
                 {
                     // If we have reached the end of stdin, we exit
-                    yellow_ln!("Reached end of input. Exiting...");
+                    warn!("Reached end of input. Exiting...");
                     break;
                 }
                 Err(err @ ZoomError::PartialDownload { .. }) => {
-                    yellow_ln!("{}", err);
+                    warn!("{err}");
                     has_errors = true;
                 }
                 Err(err) => {
-                    red_ln!("ERROR {}", err);
+                    error!("{err}");
                     has_errors = true;
                 }
             }
@@ -61,6 +59,15 @@ async fn main() {
 }
 
 fn init_log(args: &Arguments) {
-    let env = env_logger::Env::new().default_filter_or(&args.logging);
-    env_logger::init_from_env(env);
+    let logging = &args.logging;
+    let is_default_logging = logging.eq_ignore_ascii_case("info");
+    let env = env_logger::Env::new().default_filter_or(logging);
+    env_logger::Builder::from_env(env)
+        .format_timestamp(if is_default_logging {
+            None
+        } else {
+            Some(TimestampPrecision::Millis)
+        })
+        .format_target(!is_default_logging)
+        .init();
 }

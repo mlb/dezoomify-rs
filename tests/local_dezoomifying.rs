@@ -69,7 +69,7 @@ pub async fn test_image(input: &str, expected: &str) -> Result<(), ZoomError> {
             std::fs::copy(&tmp_path, "err.png")?;
             eprintln!(
                 "Unable to open the dezoomified image {:?}; copied it to err.png",
-                &tmp_path
+                tmp_path.display()
             );
             return Err(e.into());
         }

@@ -113,7 +113,7 @@ pub struct Arguments {
     pub connect_timeout: Duration,
 
     /// Level of logging verbosity. Set it to "debug" to get all logging messages.
-    #[arg(long, default_value = "warn")]
+    #[arg(long, default_value = "info")]
     pub logging: String,
 
     /// A place to store the image tiles when after they are downloaded and decrypted.
@@ -150,7 +150,7 @@ impl Default for Arguments {
             min_interval: Default::default(),
             timeout: Duration::from_secs(30),
             connect_timeout: Duration::from_secs(6),
-            logging: "warn".to_string(),
+            logging: "info".to_string(),
             tile_storage_folder: None,
             bulk: None,
         }

@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 
 use lazy_static::lazy_static;
+use log::debug;
 use log::info;
 use log::warn;
 use regex::Regex;
@@ -82,7 +83,7 @@ impl ImageInfo {
             .max_by_key(|&s| QUALITY_ORDER.iter().position(|&x| x == s))
             .cloned()
             .unwrap_or_else(|| {
-                info!("No image quality specified. Using 'default'.");
+                debug!("No image quality specified. Using 'default'.");
                 "default".into()
             })
     }
@@ -96,7 +97,7 @@ impl ImageInfo {
             .max_by_key(|&s| FORMAT_ORDER.iter().position(|&x| x == s))
             .cloned()
             .unwrap_or_else(|| {
-                info!("No image format specified. Using 'jpg'.");
+                debug!("No image format specified. Using 'jpg'.");
                 "jpg".into()
             })
     }

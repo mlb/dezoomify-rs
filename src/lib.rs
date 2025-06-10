@@ -6,7 +6,7 @@ use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-use log::{debug, info};
+use log::{debug, error, info};
 use reqwest::Client;
 
 pub use arguments::Arguments;
@@ -117,7 +117,7 @@ fn level_picker(mut levels: Vec<ZoomLevel>) -> Result<ZoomLevel, ZoomError> {
         if let Some(idx) = parse_level_index(&line, levels.len()) {
             return Ok(levels.swap_remove(idx));
         }
-        println!("'{line}' is not a valid level number");
+        error!("'{line}' is not a valid level number");
     }
 }
 
@@ -155,9 +155,8 @@ async fn find_zoomlevel(args: &Arguments) -> Result<ZoomLevel, ZoomError> {
     let mut dezoomer = args.find_dezoomer()?;
     let uri = args.choose_input_uri()?;
     let http_client = client(args.headers(), args, Some(&uri))?;
-    info!("Trying to locate a zoomable image...");
+    debug!("Trying to locate a zoomable image...");
     let zoom_levels: Vec<ZoomLevel> = list_tiles(dezoomer.as_mut(), &http_client, &uri).await?;
-    info!("Found {} zoom levels", zoom_levels.len());
     choose_level(zoom_levels, args)
 }
 
@@ -225,7 +224,7 @@ pub async fn dezoomify_level(
     mut zoom_level: ZoomLevel,
     tile_buffer: TileBuffer,
 ) -> Result<(), ZoomError> {
-    info!("Creating canvas");
+    debug!("Starting to dezoomify {zoom_level:?}");
     let mut canvas = tile_buffer;
     let mut coordinator = download_state::TileDownloadCoordinator::new(&zoom_level, args)?;
     let mut state = download_state::DownloadState::new();

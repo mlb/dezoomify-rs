@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::debug;
 
 use crate::dezoomer::{Dezoomer, DezoomerError, DezoomerInput, ZoomLevel, ZoomLevels};
 use crate::errors::DezoomerError::NeedsData;
@@ -51,7 +51,7 @@ impl Dezoomer for AutoDezoomer {
             let dezoomer = &mut self.dezoomers[i];
             let keep = match dezoomer.zoom_levels(data) {
                 Ok(mut levels) => {
-                    info!(
+                    debug!(
                         "dezoomer '{}' found {} zoom levels",
                         dezoomer.name(),
                         levels.len()
@@ -60,7 +60,7 @@ impl Dezoomer for AutoDezoomer {
                     false
                 }
                 Err(DezoomerError::NeedsData { uri }) => {
-                    info!("dezoomer '{}' requested to load {}", dezoomer.name(), &uri);
+                    debug!("dezoomer '{}' requested to load {}", dezoomer.name(), &uri);
                     if !self.needs_uris.contains(&uri) {
                         self.needs_uris.push(uri);
                     }
@@ -81,7 +81,7 @@ impl Dezoomer for AutoDezoomer {
         if let Some(uri) = self.needs_uris.pop() {
             Err(NeedsData { uri })
         } else if self.successes.is_empty() {
-            info!("No dezoomer can dezoom {:?}", data.uri);
+            debug!("No dezoomer can dezoom {:?}", data.uri);
             let errs = std::mem::take(&mut self.errors);
             Err(DezoomerError::wrap(AutoDezoomerError(errs)))
         } else {

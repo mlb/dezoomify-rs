@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use custom_error::custom_error;
-use log::{debug, info};
+use log::debug;
 
 use tile_info::ImageInfo;
 
@@ -55,7 +55,7 @@ fn zoom_levels(url: &str, raw_info: &[u8]) -> Result<ZoomLevels, IIIFError> {
                             "keeping image info {info:?} because it has distinctive IIIF properties"
                         )
                     } else {
-                        info!("dropping level {info:?}")
+                        debug!("dropping level {info:?}")
                     }
                     keep
                 })
@@ -64,7 +64,7 @@ fn zoom_levels(url: &str, raw_info: &[u8]) -> Result<ZoomLevels, IIIFError> {
             if levels.is_empty() {
                 Err(e.into())
             } else {
-                info!(
+                debug!(
                     "No normal info.json parsing failed ({}), \
                 but {} inline json5 zoom level(s) were found.",
                     e,
@@ -90,7 +90,7 @@ fn zoom_levels_from_info(url: &str, mut image_info: ImageInfo) -> ZoomLevels {
             let quality = Arc::from(img.best_quality());
             let format = Arc::from(img.best_format());
             let size_format = img.preferred_size_format();
-            info!(
+            debug!(
                 "Chose the following image parameters: tile_size=({tile_size}) quality={quality} format={format}"
             );
             let page_info = &img; // Required to allow the move
