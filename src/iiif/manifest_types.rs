@@ -197,13 +197,6 @@ impl Manifest {
                 // if annotation_page.annotation_page_type != "AnnotationPage" { continue; }
 
                 for annotation in &annotation_page.items {
-                    // Expect "Annotation", but proceed.
-                    // if annotation.annotation_type != "Annotation" { continue; }
-
-                    if annotation.motivation.as_deref() != Some("painting") {
-                        continue; // Only interested in "painting" annotations
-                    }
-
                     if let AnnotationBody::Image(image_body) = &annotation.body {
                         // Expect "Image" type for the body, but rely on service presence.
                         // if image_body.image_type != "Image" { continue; }

@@ -124,6 +124,7 @@ pub struct Arguments {
 
     /// URL or path to a text file containing a list of URLs to process in bulk mode.
     /// Each line in the file should contain one URL. Accepts both local file paths and HTTP(S) URLs.
+    /// Can also directly process IIIF manifests to download all images with enhanced metadata-based filenames.
     /// In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied.
     #[arg(long = "bulk")]
     pub bulk: Option<String>,

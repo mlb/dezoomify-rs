@@ -123,6 +123,10 @@ find the URL of this file.
 
 Alternatively, you can find this url in your browser's network inspector when loading the image.
 
+#### IIIF Manifest Support
+
+dezoomify-rs also supports processing IIIF Presentation API manifests directly, which is particularly useful for downloading entire manuscripts or multi-page documents. When processing manifests, dezoomify-rs extracts metadata to generate meaningful filenames that include document titles and page/section labels rather than generic numbered files.
+
 ### DeepZoom
 
 The DeepZoom dezoomer takes the URL of a `dzi` file as input, which you can find using 
@@ -258,7 +262,7 @@ Options:
   -c, --tile-cache <TILE_STORAGE_FOLDER>
           A place to store the image tiles when after they are downloaded and decrypted. By default, tiles are not stored to disk (which is faster), but using a tile cache allows retrying partially failed downloads, or stitching the tiles with an external program
       --bulk <BULK>
-          Path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
+          URL or path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL. Accepts both local file paths and HTTP(S) URLs. Can also directly process IIIF manifests. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
   -V, --version
           Print version
 ```
@@ -269,9 +273,11 @@ Options:
 
 ## Bulk mode
 
-dezoomify-rs supports bulk processing of multiple URLs using the `--bulk` option. This allows you to process multiple zoomable images in a single command.
+dezoomify-rs supports bulk processing of multiple URLs using the `--bulk` option. This allows you to process multiple zoomable images in a single command. The bulk source can be either a local file path or a URL.
 
 ### Using bulk mode
+
+#### Option 1: Text file with URLs
 
 Create a text file containing one URL per line:
 
@@ -291,12 +297,44 @@ Then run dezoomify-rs with the `--bulk` option:
 ./dezoomify-rs --bulk urls.txt
 ```
 
+#### Option 2: Direct IIIF manifest processing
+
+You can also pass a URL directly to the `--bulk` option to process IIIF manifests:
+
+```sh
+./dezoomify-rs --bulk https://example.com/iiif/manifest.json
+```
+
+This is particularly useful for downloading entire manuscripts or collections from IIIF-compatible repositories. The tool will automatically extract all images from the manifest and generate meaningful filenames using metadata from the manifest.
+
+### Enhanced filename generation
+
+When processing IIIF manifests, dezoomify-rs now creates much more descriptive filenames by leveraging metadata:
+
+- **Metadata titles**: Uses the "Title" field from manifest metadata (e.g., "Gospel-book ('Lindisfarne Gospels')")
+- **Canvas labels**: Incorporates specific page/section labels (e.g., "Front cover", "f. 1r", "Inside back cover")
+- **Smart fallbacks**: Falls back to manifest labels or generic page numbers when metadata isn't available
+
+**Example output filenames:**
+```
+Gospel-book_Lindisfarne_Gospels_Front_cover_0001.jpg
+Gospel-book_Lindisfarne_Gospels_f_1r_0002.jpg
+Gospel-book_Lindisfarne_Gospels_f_1v_0003.jpg
+```
+
+Instead of generic names like:
+```
+Cotton_MS_Nero_D_IV_page_1_0001.jpg
+Cotton_MS_Nero_D_IV_page_2_0002.jpg
+```
+
 ### Bulk mode behavior
 
 - **Progress tracking**: Each URL is processed sequentially with progress indicators (`[1/5]`, `[2/5]`, etc.)
 - **Automatic level selection**: If no level-specifying arguments (`--max-width`, `--max-height`, `--zoom-level`) are provided, `--largest` is automatically implied
 - **Output file naming**: If you specify an output file with `--outfile`, each image will be saved with a suffix (`_0001`, `_0002`, etc.)
 - **Error handling**: Failed downloads don't stop the entire process; the tool continues with the next URL and reports a summary at the end
+- **Metadata preservation**: IIIF manifest metadata is extracted and used for intelligent filename generation
 
 ### Examples
 
@@ -310,6 +348,18 @@ Process with specific size constraints:
 ```sh
 ./dezoomify-rs --bulk urls.txt --max-width 2000
 # Uses max-width constraint instead of auto-selecting largest
+```
+
+Process an IIIF manifest directly:
+```sh
+./dezoomify-rs --bulk https://library.example.edu/iiif/manuscript123/manifest.json
+# Downloads all pages with meaningful names based on manifest metadata
+```
+
+Process a bulk file from a URL:
+```sh
+./dezoomify-rs --bulk https://example.com/collection-urls.txt
+# Downloads and processes the URL list from the remote file
 ```
 
 ### Alternative: Using shell scripts
