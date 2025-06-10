@@ -10,7 +10,7 @@ use image::{self, DynamicImage, GenericImageView};
 use image_hasher::HasherConfig;
 use tempdir::TempDir;
 
-use dezoomify_rs::{Arguments, ZoomError, dezoomify};
+use dezoomify_rs::{Arguments, ZoomError, bulk::read_bulk_urls, dezoomify};
 
 /// Dezoom a file locally
 #[tokio::test(flavor = "multi_thread")]
@@ -145,7 +145,12 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
     args.outfile = Some(output_base.clone());
 
     // Execute bulk processing using the main function logic
-    let urls = args.read_bulk_urls()?;
+    let urls = read_bulk_urls(args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
+        source: std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Bulk file path not set in Arguments for test_bulk_processing",
+        ),
+    })?)?;
     assert_eq!(urls.len(), 2, "Should read exactly 2 URLs from bulk file");
 
     let mut successful_count = 0;
@@ -323,9 +328,13 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     assert_eq!(parsed_args.retries, 0, "Retries should be 0");
 
     // Test that URLs are read correctly
-    let urls = parsed_args
-        .read_bulk_urls()
-        .expect("Should read URLs from bulk file");
+    let urls = read_bulk_urls(parsed_args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
+        source: std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Bulk file path not set in Arguments for test_bulk_mode_cli_end_to_end",
+        ),
+    })?)
+    .expect("Should read URLs from bulk file");
     assert_eq!(urls.len(), 2, "Should read exactly 2 URLs");
     assert_eq!(
         urls[0],

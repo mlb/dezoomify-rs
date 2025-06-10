@@ -168,26 +168,6 @@ impl Arguments {
         }
     }
 
-    pub fn read_bulk_urls(&self) -> Result<Vec<String>, ZoomError> {
-        if let Some(bulk_path) = &self.bulk {
-            let content = std::fs::read_to_string(bulk_path)?;
-            let urls: Vec<String> = content
-                .lines()
-                .map(|line| line.trim())
-                .filter(|line| !line.is_empty() && !line.starts_with('#'))
-                .map(String::from)
-                .collect();
-            if urls.is_empty() {
-                return Err(ZoomError::Io {
-                    source: std::io::Error::other("Bulk file contains no valid URLs"),
-                });
-            }
-            Ok(urls)
-        } else {
-            Ok(vec![])
-        }
-    }
-
     pub fn is_bulk_mode(&self) -> bool {
         self.bulk.is_some()
     }
@@ -298,33 +278,11 @@ fn test_parse_duration() {
 
 #[test]
 fn test_bulk_url_reading() {
-    use std::fs::File;
-    use std::io::Write;
-    use tempdir::TempDir;
-
-    // Test with a valid bulk file
-    let temp_dir = TempDir::new("dezoomify-rs-test-bulk").unwrap();
-    let bulk_file_path = temp_dir.path().join("urls.txt");
-
-    let mut temp_file = File::create(&bulk_file_path).unwrap();
-    writeln!(temp_file, "https://example.com/image1").unwrap();
-    writeln!(temp_file, "https://example.com/image2").unwrap();
-    writeln!(temp_file, "# This is a comment").unwrap();
-    writeln!(temp_file).unwrap(); // Empty line
-    writeln!(temp_file, "https://example.com/image3").unwrap();
-
+    // Test bulk mode detection
     let mut args = Arguments {
-        bulk: Some(bulk_file_path),
+        bulk: Some(PathBuf::from("dummy_bulk.txt")), // Path needs to be Some for is_bulk_mode
         ..Default::default()
     };
-
-    let urls = args.read_bulk_urls().unwrap();
-    assert_eq!(urls.len(), 3);
-    assert_eq!(urls[0], "https://example.com/image1");
-    assert_eq!(urls[1], "https://example.com/image2");
-    assert_eq!(urls[2], "https://example.com/image3");
-
-    // Test bulk mode detection
     assert!(args.is_bulk_mode());
 
     // Test should_use_largest in bulk mode

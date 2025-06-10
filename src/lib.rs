@@ -27,6 +27,7 @@ use crate::output_file::reserve_output_file;
 
 mod arguments;
 mod binary_display;
+pub mod bulk;
 pub mod dezoomer;
 pub(crate) mod download_state;
 mod encoder;
