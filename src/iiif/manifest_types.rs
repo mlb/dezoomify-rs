@@ -36,6 +36,26 @@ impl IiifLabel {
     }
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct MetadataEntry {
+    #[serde(default)]
+    pub label: IiifLabel,
+    #[serde(default)]
+    pub value: IiifLabel,
+}
+
+impl MetadataEntry {
+    /// Get the metadata title if this entry is a title field
+    pub fn get_title(&self) -> Option<String> {
+        if let Some(label) = self.label.get_english_or_first() {
+            if label.to_lowercase() == "title" {
+                return self.value.get_english_or_first();
+            }
+        }
+        None
+    }
+}
+
 // Default implementation to handle missing labels gracefully via #[serde(default)]
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -50,9 +70,10 @@ pub struct Manifest {
     pub label: IiifLabel,
     #[serde(default)]
     pub items: Vec<Canvas>,
+    #[serde(default)]
+    pub metadata: Option<Vec<MetadataEntry>>,
     // Other potentially useful fields:
     // pub summary: Option<IiifLabel>,
-    // pub metadata: Option<Vec<MetadataEntry>>,
     // pub thumbnail: Option<Vec<Thumbnail>>,
 }
 
@@ -135,6 +156,8 @@ pub struct ExtractedImageInfo {
     pub image_uri: String,
     /// The label of the manifest, if available.
     pub manifest_label: Option<String>,
+    /// The title from metadata, if available.
+    pub metadata_title: Option<String>,
     /// The label of the canvas this image belongs to, if available.
     pub canvas_label: Option<String>,
     /// The 0-based index of the canvas in the manifest's `items` array.
@@ -142,6 +165,14 @@ pub struct ExtractedImageInfo {
 }
 
 impl Manifest {
+    /// Get the title from metadata if available
+    pub fn get_metadata_title(&self) -> Option<String> {
+        self.metadata
+            .as_ref()?
+            .iter()
+            .find_map(|entry| entry.get_title())
+    }
+
     /// Extracts all relevant image URIs (info.json or direct image links) from the manifest.
     ///
     /// It traverses Canvases, AnnotationPages, and Annotations to find "painting"
@@ -152,6 +183,7 @@ impl Manifest {
     pub fn extract_image_infos(&self, manifest_url: &str) -> Vec<ExtractedImageInfo> {
         let mut infos = Vec::new();
         let manifest_label = self.label.get_english_or_first();
+        let metadata_title = self.get_metadata_title();
 
         for (canvas_index, canvas) in self.items.iter().enumerate() {
             // We expect "Canvas" type, but proceed even if it's different,
@@ -221,6 +253,7 @@ impl Manifest {
                             infos.push(ExtractedImageInfo {
                                 image_uri: uri_to_add,
                                 manifest_label: manifest_label.clone(),
+                                metadata_title: metadata_title.clone(),
                                 canvas_label: canvas_label.clone(),
                                 canvas_index,
                             });

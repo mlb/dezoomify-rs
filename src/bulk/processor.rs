@@ -2,14 +2,13 @@ use crate::arguments::Arguments;
 use crate::bulk::content_reader::read_bulk_urls;
 use crate::bulk::output_path::generate_output_path_for_item;
 use crate::bulk::types::BulkProcessedItem;
+use crate::dezoomify;
 use crate::errors::ZoomError;
 use log::{error, info, warn};
 use std::path::{Path, PathBuf};
 
-async fn process_single_item_args(_args: Arguments) -> Result<PathBuf, ZoomError> {
-    Err(ZoomError::Io {
-        source: std::io::Error::other("process_single_item_args mock called"),
-    })
+async fn process_single_item_args(args: Arguments) -> Result<PathBuf, ZoomError> {
+    dezoomify(&args).await
 }
 
 /// Creates `Arguments` for processing a single URL in bulk mode.
@@ -106,18 +105,15 @@ fn create_bulk_error_result(error_count: usize) -> Result<(), ZoomError> {
 
 /// Main function to process a list of URLs in bulk.
 pub async fn process_bulk(args: &Arguments) -> Result<(), ZoomError> {
-    let bulk_file_path = args.bulk.as_ref().ok_or_else(|| ZoomError::Image {
+    let bulk_source = args.bulk.as_ref().ok_or_else(|| ZoomError::Image {
         source: image::ImageError::from(std::io::Error::other(
-            "Bulk file path (--bulk) is required for bulk processing.",
+            "Bulk source (--bulk) is required for bulk processing.",
         )),
     })?;
 
-    info!(
-        "Starting bulk processing from file: '{}'",
-        bulk_file_path.to_string_lossy()
-    );
+    info!("Starting bulk processing from source: '{}'", bulk_source);
 
-    let items_to_process = read_bulk_urls(bulk_file_path).await?;
+    let items_to_process = read_bulk_urls(bulk_source, args).await?;
 
     if items_to_process.is_empty() {
         info!("No items found to process in the bulk file.");

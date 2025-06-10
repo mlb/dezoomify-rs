@@ -122,11 +122,11 @@ pub struct Arguments {
     #[arg(short = 'c', long = "tile-cache")]
     pub tile_storage_folder: Option<PathBuf>,
 
-    /// Path to a text file containing a list of URLs to process in bulk mode.
-    /// Each line in the file should contain one URL. In bulk mode, if no level-specifying
-    /// argument is defined (such as --max-width), then --largest is implied.
+    /// URL or path to a text file containing a list of URLs to process in bulk mode.
+    /// Each line in the file should contain one URL. Accepts both local file paths and HTTP(S) URLs.
+    /// In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied.
     #[arg(long = "bulk")]
-    pub bulk: Option<PathBuf>,
+    pub bulk: Option<String>,
 }
 
 impl Default for Arguments {
@@ -280,7 +280,7 @@ fn test_parse_duration() {
 fn test_bulk_url_reading() {
     // Test bulk mode detection
     let mut args = Arguments {
-        bulk: Some(PathBuf::from("dummy_bulk.txt")), // Path needs to be Some for is_bulk_mode
+        bulk: Some("dummy_bulk.txt".into()), // Path needs to be Some for is_bulk_mode
         ..Default::default()
     };
     assert!(args.is_bulk_mode());
@@ -306,7 +306,7 @@ fn test_should_use_largest() {
 
     // Reset and test bulk mode
     args.largest = false;
-    args.bulk = Some(std::path::PathBuf::from("test.txt"));
+    args.bulk = Some("test.txt".into());
     assert!(args.should_use_largest()); // Should be true in bulk mode without level options
 
     // With level options in bulk mode

@@ -49,6 +49,7 @@ impl BulkInputParser for IiifManifestBulkParser {
             let ExtractedImageInfo {
                 image_uri,
                 manifest_label,
+                metadata_title,
                 canvas_label,
                 canvas_index,
             } = info;
@@ -80,14 +81,36 @@ impl BulkInputParser for IiifManifestBulkParser {
             template_vars.insert("canvas_index".to_string(), canvas_index.to_string());
             template_vars.insert("image_uri".to_string(), image_uri.clone());
 
-            let sanitized_m_label = sanitize_for_filename(&manifest_label_str);
+            // Add metadata title if available
+            if let Some(ref title) = metadata_title {
+                template_vars.insert("metadata_title".to_string(), title.clone());
+            }
 
-            let default_filename_stem =
-                if !sanitized_m_label.is_empty() && sanitized_m_label != "None" {
-                    format!("{}_page_{}", sanitized_m_label, page_number)
+            // Prioritize metadata title for filename, then manifest label
+            let primary_title = metadata_title.clone().or_else(|| {
+                if !manifest_label_str.is_empty() && manifest_label_str != "None" {
+                    Some(manifest_label_str.clone())
                 } else {
-                    format!("manifest_page_{}", page_number)
-                };
+                    None
+                }
+            });
+
+            let sanitized_primary_title = primary_title
+                .map(|title| sanitize_for_filename(&title))
+                .filter(|title| !title.is_empty() && title != "None");
+
+            // Create better canvas/page description
+            let page_description = if !canvas_label_str.is_empty() && canvas_label_str != "None" {
+                sanitize_for_filename(&canvas_label_str)
+            } else {
+                format!("page_{}", page_number)
+            };
+
+            let default_filename_stem = if let Some(title) = sanitized_primary_title {
+                format!("{}_{}", title, page_description)
+            } else {
+                format!("manifest_{}", page_description)
+            };
 
             let final_default_filename_stem = if default_filename_stem.is_empty() {
                 format!("item_{}", page_number)
@@ -238,7 +261,7 @@ mod tests {
             result[0].download_url,
             "http://example.com/images/book1_page1/info.json"
         );
-        assert_eq!(result[0].default_filename_stem, "My_Book_page_1");
+        assert_eq!(result[0].default_filename_stem, "My_Book_Page_Label");
         assert_eq!(result[0].template_vars["manifest_label"], "My Book");
         assert_eq!(result[0].template_vars["canvas_label"], "Page Label");
         assert_eq!(result[0].template_vars["page_number"], "1");
@@ -249,7 +272,7 @@ mod tests {
             result[1].download_url,
             "http://example.com/images/book1_page1/info.json"
         );
-        assert_eq!(result[1].default_filename_stem, "My_Book_page_2");
+        assert_eq!(result[1].default_filename_stem, "My_Book_Page_Label");
         assert_eq!(result[1].template_vars["manifest_label"], "My Book");
         assert_eq!(result[1].template_vars["canvas_label"], "Page Label");
         assert_eq!(result[1].template_vars["page_number"], "2");
@@ -402,16 +425,22 @@ mod tests {
             .unwrap();
         assert_eq!(result.len(), 1);
 
+        assert_eq!(result.len(), 1);
         assert_eq!(
             result[0].download_url,
             "http://example.com/images/direct_image.png"
         );
-        assert_eq!(result[0].default_filename_stem, "Direct_Image_Book_page_1");
+        assert_eq!(
+            result[0].default_filename_stem,
+            "Direct_Image_Book_Direct_Page"
+        );
         assert_eq!(
             result[0].template_vars["manifest_label"],
             "Direct Image Book"
         );
         assert_eq!(result[0].template_vars["canvas_label"], "Direct Page");
         assert_eq!(result[0].template_vars["page_number"], "1");
+        assert_eq!(result[0].template_vars["total_pages"], "1");
+        assert_eq!(result[0].template_vars["canvas_index"], "0");
     }
 }

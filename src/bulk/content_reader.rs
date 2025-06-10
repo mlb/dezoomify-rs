@@ -1,23 +1,20 @@
+use crate::arguments::Arguments;
 use crate::bulk::parsers::iiif_manifest::IiifManifestBulkParser;
 use crate::bulk::parsers::simple_text::SimpleTextFileBulkParser;
 use crate::bulk::types::{BulkParser, BulkProcessedItem};
 use crate::errors::ZoomError;
+use crate::network::{client, fetch_uri};
 use log::{debug, info, warn};
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
 
-/// Reads a bulk input file, parses it, and returns a list of items to process.
-/// This is a synchronous wrapper around the asynchronous `read_urls_from_content_with_parsers`.
-pub async fn read_bulk_urls(path: &Path) -> Result<Vec<BulkProcessedItem>, ZoomError> {
-    let mut file = File::open(path).map_err(|source| ZoomError::Io { source })?;
-    let mut content_bytes = Vec::new();
-    file.read_to_end(&mut content_bytes)
-        .map_err(|source| ZoomError::Io { source })?;
-
-    let source_description = path.to_string_lossy().into_owned();
-
-    read_urls_from_content_with_parsers(&content_bytes, &source_description).await
+/// Reads a bulk input source (file path or URL), parses it, and returns a list of items to process.
+/// This function accepts both local file paths and URLs.
+pub async fn read_bulk_urls(
+    source: &str,
+    args: &Arguments,
+) -> Result<Vec<BulkProcessedItem>, ZoomError> {
+    let http_client = client(args.headers(), args, Some(source))?;
+    let content_bytes = fetch_uri(source, &http_client).await?;
+    read_urls_from_content_with_parsers(&content_bytes, source).await
 }
 
 /// Parses content (e.g., from a file or HTTP response) to extract processable items.
@@ -162,7 +159,7 @@ mod tests {
             items[0].download_url,
             "http://example.com/image/1/info.json"
         );
-        assert_eq!(items[0].default_filename_stem, "Test_Manifest_page_1");
+        assert_eq!(items[0].default_filename_stem, "Test_Manifest_Page_1");
         assert_eq!(
             items[0].template_vars.get("manifest_label"),
             Some(&"Test Manifest".to_string())

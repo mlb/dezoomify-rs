@@ -135,7 +135,7 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
 
     // Setup arguments for bulk processing
     let mut args: Arguments = Default::default();
-    args.bulk = Some(bulk_file_path);
+    args.bulk = Some(bulk_file_path.to_string_lossy().to_string());
     args.largest = true; // This should be implied anyway in bulk mode
     args.retries = 0;
     args.logging = "error".into();
@@ -145,12 +145,15 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
     args.outfile = Some(output_base.clone());
 
     // Execute bulk processing using the main function logic
-    let urls = read_bulk_urls(args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
-        source: std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Bulk file path not set in Arguments for test_bulk_processing",
-        ),
-    })?)
+    let urls = read_bulk_urls(
+        args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Bulk source not set in Arguments for test_bulk_processing",
+            ),
+        })?,
+        &args,
+    )
     .await?;
     assert_eq!(urls.len(), 2, "Should read exactly 2 URLs from bulk file");
 
@@ -306,7 +309,7 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     assert!(parsed_args.is_bulk_mode(), "Should be in bulk mode");
     assert_eq!(
         parsed_args.bulk.as_ref().expect("bulk should be Some"),
-        &bulk_file_path,
+        &bulk_file_path.to_string_lossy().to_string(),
         "Bulk file path should match"
     );
 
@@ -332,12 +335,15 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     assert_eq!(parsed_args.retries, 0, "Retries should be 0");
 
     // Test that URLs are read correctly
-    let urls = read_bulk_urls(parsed_args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
-        source: std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Bulk file path not set in Arguments for test_bulk_mode_cli_end_to_end",
-        ),
-    })?)
+    let urls = read_bulk_urls(
+        parsed_args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Bulk source not set in Arguments for test_bulk_mode_cli_end_to_end",
+            ),
+        })?,
+        &parsed_args,
+    )
     .await
     .expect("Should read URLs from bulk file");
     assert_eq!(urls.len(), 2, "Should read exactly 2 URLs");

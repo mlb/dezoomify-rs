@@ -415,6 +415,7 @@ mod manifest_parsing_tests {
             ExtractedImageInfo {
                 image_uri: "https://example.com/svc/page1_svc/info.json".to_string(), // Resolved
                 manifest_label: Some("Book Example".to_string()),
+                metadata_title: None,
                 canvas_label: Some("Page 1".to_string()),
                 canvas_index: 0,
             }
