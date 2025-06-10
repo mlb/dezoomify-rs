@@ -150,7 +150,8 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
             std::io::ErrorKind::InvalidInput,
             "Bulk file path not set in Arguments for test_bulk_processing",
         ),
-    })?).await?;
+    })?)
+    .await?;
     assert_eq!(urls.len(), 2, "Should read exactly 2 URLs from bulk file");
 
     let mut successful_count = 0;
@@ -195,7 +196,10 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
                 successful_count += 1;
             }
             Err(err) => {
-                panic!("Unexpected error processing URL {}: {}", url.download_url, err);
+                panic!(
+                    "Unexpected error processing URL {}: {}",
+                    url.download_url, err
+                );
             }
         }
     }
@@ -333,7 +337,8 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
             std::io::ErrorKind::InvalidInput,
             "Bulk file path not set in Arguments for test_bulk_mode_cli_end_to_end",
         ),
-    })?).await
+    })?)
+    .await
     .expect("Should read URLs from bulk file");
     assert_eq!(urls.len(), 2, "Should read exactly 2 URLs");
     assert_eq!(
@@ -395,7 +400,10 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
                 successful_count += 1;
             }
             Err(err) => {
-                panic!("Unexpected error processing URL '{}': {}", url.download_url, err);
+                panic!(
+                    "Unexpected error processing URL '{}': {}",
+                    url.download_url, err
+                );
             }
         }
     }

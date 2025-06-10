@@ -10,8 +10,8 @@ use crate::iiif::tile_info::TileSizeFormat;
 use crate::json_utils::all_json;
 use crate::max_size_in_rect;
 
-pub mod tile_info;
 pub mod manifest_types;
+pub mod tile_info;
 
 /// Dezoomer for the International Image Interoperability Framework.
 /// See https://iiif.io/
@@ -218,10 +218,9 @@ pub fn parse_iiif_manifest_from_bytes(
             manifest_url, manifest.manifest_type
         );
     }
-    
+
     Ok(manifest.extract_image_infos(manifest_url))
 }
-
 
 #[test]
 fn test_tiles() {
@@ -470,7 +469,7 @@ mod manifest_parsing_tests {
             "https://library.example.edu/iiif-services/abs_image2_svc/info.json"
         );
         assert_eq!(infos[1].canvas_label, Some("C2 Abs Path Svc".to_string()));
-        
+
         assert_eq!(
             infos[2].image_uri,
             "https://library.example.edu/collection/item123/images/cover_art.jpeg"
@@ -489,7 +488,7 @@ mod manifest_parsing_tests {
             e => panic!("Expected JsonError, got {:?}", e),
         }
     }
-    
+
     #[test]
     fn test_parse_json_not_a_manifest_type() {
         let manifest_url = "https://example.com/not_a_manifest.json";
@@ -497,7 +496,7 @@ mod manifest_parsing_tests {
         // This should parse fine based on struct leniency, but we log a warning.
         // The function itself should succeed if the structure is parsable into Manifest.
         let result = parse_iiif_manifest_from_bytes(json_data.as_bytes(), manifest_url);
-        assert!(result.is_ok()); 
+        assert!(result.is_ok());
         // The `extract_image_infos` method would then be called on this.
         // For a more strict check, one might add an explicit error if manifest.manifest_type != "Manifest".
         // The current implementation logs a warning and proceeds.

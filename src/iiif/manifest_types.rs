@@ -91,18 +91,16 @@ pub struct Annotation {
     // target: Option<Target>, // Target is usually the canvas; can be string or object
 }
 
-
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
 #[serde(untagged)] // AnnotationBody can be a single ImageBody or potentially an array or other types.
-                   // For "painting" motivation, it's typically a single ImageBody object.
-                   // If it can be an array, this definition needs adjustment.
-                   // For now, assuming it's a single object or can be missing (handled by Option in usage or default)
+// For "painting" motivation, it's typically a single ImageBody object.
+// If it can be an array, this definition needs adjustment.
+// For now, assuming it's a single object or can be missing (handled by Option in usage or default)
 pub enum AnnotationBody {
     Image(ImageBody),
     #[default]
     EmptyOrUnsupported, // Catch-all for missing body or types we don't handle
 }
-
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ImageBody {
@@ -183,20 +181,28 @@ impl Manifest {
 
                         // Prioritize ImageService3, then ImageService2, then any other ImageService
                         let services = &image_body.service;
-                        if let Some(service3) = services.iter().find(|s| s.service_type == "ImageService3") {
+                        if let Some(service3) =
+                            services.iter().find(|s| s.service_type == "ImageService3")
+                        {
                             if !service3.id.is_empty() {
                                 chosen_original_service_id = Some(&service3.id);
                             }
-                        } else if let Some(service2) = services.iter().find(|s| s.service_type == "ImageService2") {
-                             if !service2.id.is_empty() {
+                        } else if let Some(service2) =
+                            services.iter().find(|s| s.service_type == "ImageService2")
+                        {
+                            if !service2.id.is_empty() {
                                 chosen_original_service_id = Some(&service2.id);
                             }
-                        } else if let Some(any_service) = services.iter().find(|s| s.service_type.contains("ImageService") && !s.id.is_empty() ) {
+                        } else if let Some(any_service) = services
+                            .iter()
+                            .find(|s| s.service_type.contains("ImageService") && !s.id.is_empty())
+                        {
                             chosen_original_service_id = Some(&any_service.id);
                         }
 
                         if let Some(original_service_id) = chosen_original_service_id {
-                            let mut resolved_uri = resolve_relative(manifest_url, original_service_id);
+                            let mut resolved_uri =
+                                resolve_relative(manifest_url, original_service_id);
                             // Ensure it points to info.json if it's a service ID
                             if !resolved_uri.ends_with("/info.json") {
                                 if !resolved_uri.ends_with('/') {
@@ -210,9 +216,9 @@ impl Manifest {
                             // This covers cases where 'body' is a direct image link without a service.
                             final_image_uri = Some(resolve_relative(manifest_url, &image_body.id));
                         }
-                        
+
                         if let Some(uri_to_add) = final_image_uri {
-                             infos.push(ExtractedImageInfo {
+                            infos.push(ExtractedImageInfo {
                                 image_uri: uri_to_add,
                                 manifest_label: manifest_label.clone(),
                                 canvas_label: canvas_label.clone(),
@@ -226,7 +232,6 @@ impl Manifest {
         infos
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -244,19 +249,27 @@ mod tests {
         map_en.insert("en".to_string(), vec!["World".to_string()]);
         map_en.insert("fr".to_string(), vec!["Monde".to_string()]);
         let label_map_en = IiifLabel::Map(map_en);
-        assert_eq!(label_map_en.get_english_or_first(), Some("World".to_string()));
+        assert_eq!(
+            label_map_en.get_english_or_first(),
+            Some("World".to_string())
+        );
 
         let mut map_en_empty_val = HashMap::new();
         map_en_empty_val.insert("en".to_string(), vec!["".to_string()]);
         map_en_empty_val.insert("fr".to_string(), vec!["Monde".to_string()]);
         let label_map_en_empty = IiifLabel::Map(map_en_empty_val);
-        assert_eq!(label_map_en_empty.get_english_or_first(), Some("Monde".to_string()));
-
+        assert_eq!(
+            label_map_en_empty.get_english_or_first(),
+            Some("Monde".to_string())
+        );
 
         let mut map_fr_only = HashMap::new();
         map_fr_only.insert("fr".to_string(), vec!["Monde".to_string()]);
         let label_map_fr_only = IiifLabel::Map(map_fr_only);
-        assert_eq!(label_map_fr_only.get_english_or_first(), Some("Monde".to_string()));
+        assert_eq!(
+            label_map_fr_only.get_english_or_first(),
+            Some("Monde".to_string())
+        );
 
         let label_none = IiifLabel::None;
         assert_eq!(label_none.get_english_or_first(), None);
@@ -312,13 +325,19 @@ mod tests {
         "#;
         let manifest: Manifest = serde_json::from_str(json_data).unwrap();
         assert_eq!(manifest.manifest_type, "Manifest");
-        assert_eq!(manifest.label.get_english_or_first(), Some("Book 1".to_string()));
+        assert_eq!(
+            manifest.label.get_english_or_first(),
+            Some("Book 1".to_string())
+        );
         assert_eq!(manifest.items.len(), 1);
 
         let infos = manifest.extract_image_infos("https://example.org/iiif/book1/manifest");
         assert_eq!(infos.len(), 1);
         let info = &infos[0];
-        assert_eq!(info.image_uri, "https://example.org/iiif/book1/page1_svc/info.json");
+        assert_eq!(
+            info.image_uri,
+            "https://example.org/iiif/book1/page1_svc/info.json"
+        );
         assert_eq!(info.manifest_label, Some("Book 1".to_string()));
         assert_eq!(info.canvas_label, Some("Page 1".to_string()));
         assert_eq!(info.canvas_index, 0);
@@ -356,11 +375,14 @@ mod tests {
           ]
         }
         "#;
-        
+
         let manifest: Manifest = serde_json::from_str(json_data).unwrap();
         let infos = manifest.extract_image_infos("https://example.org/manifest-no-service");
         assert_eq!(infos.len(), 1);
-        assert_eq!(infos[0].image_uri, "https://example.org/images/direct_image.jpg");
+        assert_eq!(
+            infos[0].image_uri,
+            "https://example.org/images/direct_image.jpg"
+        );
         assert_eq!(infos[0].manifest_label, None);
         assert_eq!(infos[0].canvas_label, None);
         assert_eq!(infos[0].canvas_index, 0);
@@ -383,13 +405,13 @@ mod tests {
           }]}]
         }
         "#;
-        
+
         let manifest: Manifest = serde_json::from_str(json_data).unwrap();
         let infos = manifest.extract_image_infos("https://example.org/"); // Base URL for resolving "svc3"
         assert_eq!(infos.len(), 1);
         assert_eq!(infos[0].image_uri, "https://example.org/svc3/info.json");
     }
-    
+
     #[test]
     fn test_service_id_already_has_info_json() {
         let json_data = r#"
@@ -404,12 +426,15 @@ mod tests {
           }]}]
         }
         "#;
-        
+
         let manifest: Manifest = serde_json::from_str(json_data).unwrap();
         // Base URL doesn't matter here as the service ID is absolute and complete
-        let infos = manifest.extract_image_infos("https://unused.example.com/"); 
+        let infos = manifest.extract_image_infos("https://unused.example.com/");
         assert_eq!(infos.len(), 1);
-        assert_eq!(infos[0].image_uri, "https://example.org/iiif/img_already_info/info.json");
+        assert_eq!(
+            infos[0].image_uri,
+            "https://example.org/iiif/img_already_info/info.json"
+        );
     }
 
     #[test]
@@ -437,22 +462,28 @@ mod tests {
           ]
         }
         "#;
-        
+
         let manifest: Manifest = serde_json::from_str(json_data).unwrap();
         let manifest_base_url = "https://example.com/base/";
         let infos = manifest.extract_image_infos(manifest_base_url);
         assert_eq!(infos.len(), 3);
 
-        assert_eq!(infos[0].image_uri, "https://example.com/base/svc1/info.json");
+        assert_eq!(
+            infos[0].image_uri,
+            "https://example.com/base/svc1/info.json"
+        );
         assert_eq!(infos[0].manifest_label, Some("Multi".to_string()));
         assert_eq!(infos[0].canvas_label, Some("Canvas 1".to_string()));
         assert_eq!(infos[0].canvas_index, 0);
 
-        assert_eq!(infos[1].image_uri, "https://example.com/base/svc2.1/info.json");
+        assert_eq!(
+            infos[1].image_uri,
+            "https://example.com/base/svc2.1/info.json"
+        );
         assert_eq!(infos[1].manifest_label, Some("Multi".to_string()));
         assert_eq!(infos[1].canvas_label, Some("Canvas 2".to_string()));
         assert_eq!(infos[1].canvas_index, 1);
-        
+
         assert_eq!(infos[2].image_uri, "https://example.com/base/img2.2.png");
         assert_eq!(infos[2].manifest_label, Some("Multi".to_string()));
         assert_eq!(infos[2].canvas_label, Some("Canvas 2".to_string()));
@@ -485,13 +516,20 @@ mod tests {
             } ]
         }
         "#;
-        
+
         let manifest: Manifest = serde_json::from_str(json_data).expect("Failed to parse manifest");
-        let infos = manifest.extract_image_infos("https://bl.digirati.io/iiif/ark:/81055/man_10000006.0x000001");
+        let infos = manifest
+            .extract_image_infos("https://bl.digirati.io/iiif/ark:/81055/man_10000006.0x000001");
         assert_eq!(infos.len(), 1);
         // Should pick ImageService3
-        assert_eq!(infos[0].image_uri, "https://dlcs.bl.digirati.io/iiif-img/v3/.../man_10000006.0x000002/info.json");
-        assert_eq!(infos[0].manifest_label, Some("Cotton MS Nero D IV".to_string()));
+        assert_eq!(
+            infos[0].image_uri,
+            "https://dlcs.bl.digirati.io/iiif-img/v3/.../man_10000006.0x000002/info.json"
+        );
+        assert_eq!(
+            infos[0].manifest_label,
+            Some("Cotton MS Nero D IV".to_string())
+        );
         assert_eq!(infos[0].canvas_label, Some("Front cover".to_string()));
     }
 
@@ -508,7 +546,11 @@ mod tests {
         "#;
         let manifest: Manifest = serde_json::from_str(json_data).unwrap();
         let infos = manifest.extract_image_infos("https://example.org/");
-        assert_eq!(infos.len(), 0, "Expected no image infos from empty or unsupported bodies");
+        assert_eq!(
+            infos.len(),
+            0,
+            "Expected no image infos from empty or unsupported bodies"
+        );
     }
 
     #[test]
@@ -561,19 +603,46 @@ mod tests {
 
         assert_eq!(infos.len(), 5);
 
-        assert_eq!(infos[0].image_uri, "https://example.com/iiif/collection1/images/page1_svc/info.json");
+        assert_eq!(
+            infos[0].image_uri,
+            "https://example.com/iiif/collection1/images/page1_svc/info.json"
+        );
         assert_eq!(infos[0].canvas_label, Some("Canvas 1 Rel Svc".to_string()));
 
-        assert_eq!(infos[1].image_uri, "https://example.com/abs/path/to/img_svc/info.json");
-        assert_eq!(infos[1].canvas_label, Some("Canvas 2 Abs Path Svc".to_string()));
-        
-        assert_eq!(infos[2].image_uri, "https://example.com/iiif/collection1/bookA/images/cover.jpg");
-        assert_eq!(infos[2].canvas_label, Some("Canvas 3 Rel Direct Img".to_string()));
+        assert_eq!(
+            infos[1].image_uri,
+            "https://example.com/abs/path/to/img_svc/info.json"
+        );
+        assert_eq!(
+            infos[1].canvas_label,
+            Some("Canvas 2 Abs Path Svc".to_string())
+        );
 
-        assert_eq!(infos[3].image_uri, "https://other.example.net/iiif/itemQ/svc/info.json");
-        assert_eq!(infos[3].canvas_label, Some("Canvas 4 Full URL Svc".to_string()));
-        
-        assert_eq!(infos[4].image_uri, "https://example.com/iiif/collection1/bookA/images_rel_noslash_svc/info.json");
-        assert_eq!(infos[4].canvas_label, Some("Canvas 5 Rel Svc No Slash".to_string()));
+        assert_eq!(
+            infos[2].image_uri,
+            "https://example.com/iiif/collection1/bookA/images/cover.jpg"
+        );
+        assert_eq!(
+            infos[2].canvas_label,
+            Some("Canvas 3 Rel Direct Img".to_string())
+        );
+
+        assert_eq!(
+            infos[3].image_uri,
+            "https://other.example.net/iiif/itemQ/svc/info.json"
+        );
+        assert_eq!(
+            infos[3].canvas_label,
+            Some("Canvas 4 Full URL Svc".to_string())
+        );
+
+        assert_eq!(
+            infos[4].image_uri,
+            "https://example.com/iiif/collection1/bookA/images_rel_noslash_svc/info.json"
+        );
+        assert_eq!(
+            infos[4].canvas_label,
+            Some("Canvas 5 Rel Svc No Slash".to_string())
+        );
     }
 }

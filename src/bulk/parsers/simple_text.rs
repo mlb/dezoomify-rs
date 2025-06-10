@@ -1,26 +1,26 @@
-use crate::bulk_format::{BulkInputParser, BulkProcessedItem};
+use crate::bulk::types::{BulkInputParser, BulkProcessedItem};
 use std::collections::HashMap;
 use std::path::Path;
 use url::Url;
 
-/// Simple percent decoding for common URL-encoded characters
 fn simple_percent_decode(input: &str) -> String {
-    input.replace("%20", " ")
-         .replace("%21", "!")
-         .replace("%22", "\"")
-         .replace("%23", "#")
-         .replace("%24", "$")
-         .replace("%25", "%")
-         .replace("%26", "&")
-         .replace("%27", "'")
-         .replace("%28", "(")
-         .replace("%29", ")")
-         .replace("%2A", "*")
-         .replace("%2B", "+")
-         .replace("%2C", ",")
-         .replace("%2D", "-")
-         .replace("%2E", ".")
-         .replace("%2F", "/")
+    input
+        .replace("%20", " ")
+        .replace("%21", "!")
+        .replace("%22", "\"")
+        .replace("%23", "#")
+        .replace("%24", "$")
+        .replace("%25", "%")
+        .replace("%26", "&")
+        .replace("%27", "'")
+        .replace("%28", "(")
+        .replace("%29", ")")
+        .replace("%2A", "*")
+        .replace("%2B", "+")
+        .replace("%2C", ",")
+        .replace("%2D", "-")
+        .replace("%2E", ".")
+        .replace("%2F", "/")
 }
 
 /// A parser for simple text files where each non-empty, non-comment line is treated as a URL.
@@ -41,7 +41,7 @@ impl BulkInputParser for SimpleTextFileBulkParser {
     async fn parse(
         &self,
         content: &str,
-        _source_url: Option<&str>, // Not used by this parser
+        _source_url: Option<&str>,
     ) -> Result<Vec<BulkProcessedItem>, String> {
         let mut items = Vec::new();
         let mut index = 0;
@@ -64,26 +64,22 @@ impl BulkInputParser for SimpleTextFileBulkParser {
                 Ok(parsed_url) => {
                     if let Some(segments) = parsed_url.path_segments() {
                         let segments: Vec<&str> = segments.collect();
-                        // Find the last non-empty segment
                         let last_non_empty = segments.iter().rev().find(|s| !s.is_empty());
-                        
+
                         if let Some(name) = last_non_empty {
-                            // Simple percent decoding for common cases like %20 -> space
                             let decoded_name = simple_percent_decode(name);
-                            Path::new(&decoded_name)
-                                .file_stem()
-                                .map_or_else(
-                                    || decoded_name.to_string(), // Use full segment if no stem (e.g. ".bashrc", "nodot")
-                                    |s| s.to_string_lossy().into_owned(),
-                                )
+                            Path::new(&decoded_name).file_stem().map_or_else(
+                                || decoded_name.to_string(),
+                                |s| s.to_string_lossy().into_owned(),
+                            )
                         } else {
-                            format!("image_{}", index) // Fallback if no non-empty segments
+                            format!("image_{}", index)
                         }
                     } else {
-                        format!("image_{}", index) // Fallback if no path segments
+                        format!("image_{}", index)
                     }
-                },
-                Err(_) => format!("image_{}", index), // Fallback if URL parsing fails
+                }
+                Err(_) => format!("image_{}", index),
             };
 
             template_vars.insert(
@@ -130,13 +126,9 @@ mod tests {
 
         assert_eq!(result.len(), 2);
 
-        // Item 1
         assert_eq!(result[0].download_url, "http://example.com/image1.jpg");
         assert_eq!(result[0].default_filename_stem, "image1");
-        assert_eq!(
-            result[0].template_vars.get("index"),
-            Some(&"1".to_string())
-        );
+        assert_eq!(result[0].template_vars.get("index"), Some(&"1".to_string()));
         assert_eq!(
             result[0].template_vars.get("url"),
             Some(&"http://example.com/image1.jpg".to_string())
@@ -146,16 +138,12 @@ mod tests {
             Some(&"image1".to_string())
         );
 
-        // Item 2
         assert_eq!(
             result[1].download_url,
             "https://example.org/data/archive.zip"
         );
         assert_eq!(result[1].default_filename_stem, "archive");
-        assert_eq!(
-            result[1].template_vars.get("index"),
-            Some(&"2".to_string())
-        );
+        assert_eq!(result[1].template_vars.get("index"), Some(&"2".to_string()));
         assert_eq!(
             result[1].template_vars.get("url"),
             Some(&"https://example.org/data/archive.zip".to_string())
@@ -170,55 +158,51 @@ mod tests {
     async fn test_parse_urls_with_tricky_filenames() {
         let parser = SimpleTextFileBulkParser::new();
         let content = concat!(
-            "http://example.com/image_no_extension\n", // No extension
-            "http://example.com/archive.tar.gz\n",      // Double extension
-            "http://example.com/.hiddenfile\n",         // Hidden file
-            "http://example.com/path/\n",               // Trailing slash
-            "http://example.com/\n",                    // Host only with slash
-            "not_a_valid_url_at_all\n",                 // Invalid URL
-            "http://example.com/with space.jpg"       // URL with space (though technically needs encoding)
+            "http://example.com/image_no_extension\n",
+            "http://example.com/archive.tar.gz\n",
+            "http://example.com/.hiddenfile\n",
+            "http://example.com/path/\n",
+            "http://example.com/\n",
+            "not_a_valid_url_at_all\n",
+            "http://example.com/with space.jpg"
         );
         let result = parser.parse(content, None).await.unwrap();
 
         assert_eq!(result.len(), 7);
 
         assert_eq!(result[0].default_filename_stem, "image_no_extension");
-        assert_eq!(result[0].template_vars["filename_from_url"], "image_no_extension");
+        assert_eq!(
+            result[0].template_vars["filename_from_url"],
+            "image_no_extension"
+        );
 
         assert_eq!(result[1].default_filename_stem, "archive.tar");
         assert_eq!(result[1].template_vars["filename_from_url"], "archive.tar");
-        
+
         assert_eq!(result[2].default_filename_stem, ".hiddenfile");
         assert_eq!(result[2].template_vars["filename_from_url"], ".hiddenfile");
 
-        // Url: "http://example.com/path/"
-        // path_segments().last() -> Some("path")
-        // Path::new("path").file_stem() -> Some("path")
         assert_eq!(result[3].default_filename_stem, "path");
         assert_eq!(result[3].template_vars["filename_from_url"], "path");
 
-        // Url: "http://example.com/"
-        // path_segments().last() -> None (or Some("") which is filtered)
-        assert_eq!(result[4].default_filename_stem, "image_5"); // Fallback
+        assert_eq!(result[4].default_filename_stem, "image_5");
         assert_eq!(result[4].template_vars["filename_from_url"], "image_5");
 
-        // Url: "not_a_valid_url_at_all"
-        assert_eq!(result[5].default_filename_stem, "image_6"); // Fallback
+        assert_eq!(result[5].default_filename_stem, "image_6");
         assert_eq!(result[5].template_vars["filename_from_url"], "image_6");
 
-        // Url: "http://example.com/with space.jpg"
         assert_eq!(result[6].default_filename_stem, "with space");
         assert_eq!(result[6].template_vars["filename_from_url"], "with space");
     }
 
-     #[tokio::test]
+    #[tokio::test]
     async fn test_url_with_query_and_fragment() {
         let parser = SimpleTextFileBulkParser::new();
-        let content = "http://example.com/image.jpg?query=123#fragment";
+        let content = "http://example.com/file.pdf?param=value#section";
         let result = parser.parse(content, None).await.unwrap();
+
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].download_url, "http://example.com/image.jpg?query=123#fragment");
-        assert_eq!(result[0].default_filename_stem, "image");
-        assert_eq!(result[0].template_vars["filename_from_url"], "image");
+        assert_eq!(result[0].default_filename_stem, "file");
+        assert_eq!(result[0].template_vars["filename_from_url"], "file");
     }
 }

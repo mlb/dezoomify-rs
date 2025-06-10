@@ -30,7 +30,11 @@ pub trait BulkInputParser: Send + Sync {
     /// # Returns
     /// A `Result` containing either a vector of `BulkProcessedItem`s on success,
     /// or a `String` error message on failure.
-    async fn parse(&self, content: &str, source_url: Option<&str>) -> Result<Vec<BulkProcessedItem>, String>;
+    async fn parse(
+        &self,
+        content: &str,
+        source_url: Option<&str>,
+    ) -> Result<Vec<BulkProcessedItem>, String>;
 
     /// A human-readable name for the parser, used for logging or debugging.
     fn name(&self) -> &str;
@@ -39,8 +43,8 @@ pub trait BulkInputParser: Send + Sync {
 /// An enum that holds concrete parser types to work around the async trait object limitation
 #[derive(Debug)]
 pub enum BulkParser {
-    IiifManifest(crate::iiif_bulk_parser::IiifManifestBulkParser),
-    SimpleText(crate::simple_text_parser::SimpleTextFileBulkParser),
+    IiifManifest(crate::bulk::parsers::iiif_manifest::IiifManifestBulkParser),
+    SimpleText(crate::bulk::parsers::simple_text::SimpleTextFileBulkParser),
 }
 
 impl BulkParser {
@@ -51,7 +55,11 @@ impl BulkParser {
         }
     }
 
-    pub async fn parse(&self, content: &str, source_url: Option<&str>) -> Result<Vec<BulkProcessedItem>, String> {
+    pub async fn parse(
+        &self,
+        content: &str,
+        source_url: Option<&str>,
+    ) -> Result<Vec<BulkProcessedItem>, String> {
         match self {
             BulkParser::IiifManifest(parser) => parser.parse(content, source_url).await,
             BulkParser::SimpleText(parser) => parser.parse(content, source_url).await,
