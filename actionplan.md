@@ -197,19 +197,21 @@ impl Dezoomer for IIIF {
 
 **Remarks:** Successfully transformed Krpano dezoomer to group levels by logical image (scenes). Created `KrpanoZoomableImage` struct with proper `ZoomableImage` implementation. Added `load_images_from_properties` function that processes each `ImageInfo` separately instead of flattening. Smart title generation combines global title with scene names. Added comprehensive tests for single images, cube faces, and multi-scene scenarios. Multi-scene Krpano files (like `krpano_scenes.xml` with 3 scenes) now return 3 separate `KrpanoZoomableImage` objects. All 143 tests passing. Committed as 47559dd.
 
-### Step 6: Create Bulk Text Dezoomer
+### Step 6: Create Bulk Text Dezoomer ✅ DONE
 **Files to create:** `src/bulk_text/mod.rs`
-**Files to modify:** `src/lib.rs` (to register new dezoomer)
+**Files to modify:** `src/lib.rs` (to register new dezoomer), `src/auto.rs` (to register dezoomer)
 
 **Tasks:**
-1. Create new `BulkTextDezoomer` that parses text files
-2. Returns `DezoomerResult::ImageUrls` with parsed URLs
-3. Integrate into main dezoomer list
+1. ✅ Create new `BulkTextDezoomer` that parses text files
+2. ✅ Returns `DezoomerResult::ImageUrls` with parsed URLs
+3. ✅ Integrate into main dezoomer list
 
 **Tests to run:**
-- `cargo clippy` - should pass
-- `cargo test` - should pass
-- Test bulk text parsing with sample input
+- ✅ `cargo clippy` - should pass
+- ✅ `cargo test` - should pass
+- ✅ Test bulk text parsing with sample input
+
+**Remarks:** Successfully created BulkTextDezoomer that parses text files containing URLs. Supports comments (#) and empty lines. Extracts titles from URLs for better identification. Returns `DezoomerResult::ImageUrls` for recursive processing by other dezoomers. Added backward compatible `zoom_levels` method. Comprehensive test suite with 7 tests covering parsing, title extraction, and error scenarios. Registered in `auto.rs` dezoomer list. All 150 tests passing. Committed as 42eb2b9.
 
 ### Step 7: Update Main Processing Logic
 **Files to modify:** `src/lib.rs`, main processing functions

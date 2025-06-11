@@ -20,7 +20,7 @@ use output_file::get_outname;
 use tile::Tile;
 pub use vec2d::Vec2d;
 
-use crate::dezoomer::PageContents;
+use crate::dezoomer::{PageContents, DezoomerResult, ZoomableImage};
 use crate::encoder::tile_buffer::TileBuffer;
 
 use crate::output_file::reserve_output_file;
@@ -74,6 +74,38 @@ async fn list_tiles(
     loop {
         match dezoomer.zoom_levels(&i) {
             Ok(levels) => return Ok(levels),
+            Err(DezoomerError::NeedsData { uri }) => {
+                let contents = fetch_uri(&uri, http).await.into();
+                debug!("Response for metadata file '{}': {:?}", uri, &contents);
+                i.uri = uri;
+                i.contents = contents;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
+
+/// Process a single dezoomer to get images, handling the NeedsData loop
+async fn get_images_from_dezoomer(
+    dezoomer: &mut dyn Dezoomer,
+    http: &Client,
+    uri: &str,
+) -> Result<Vec<Box<dyn ZoomableImage>>, ZoomError> {
+    let mut i = DezoomerInput {
+        uri: String::from(uri),
+        contents: PageContents::Unknown,
+    };
+    loop {
+        match dezoomer.dezoomer_result(&i) {
+            Ok(result) => match result {
+                DezoomerResult::Images(images) => return Ok(images),
+                DezoomerResult::ImageUrls(urls) => {
+                    // For URLs, we need to process them with other dezoomers
+                    // For now, let's just return an empty list and handle this case later
+                    debug!("Got {} URLs that need further processing", urls.len());
+                    return Ok(Vec::new());
+                }
+            },
             Err(DezoomerError::NeedsData { uri }) => {
                 let contents = fetch_uri(&uri, http).await.into();
                 debug!("Response for metadata file '{}': {:?}", uri, &contents);
@@ -151,12 +183,63 @@ fn choose_level(mut levels: Vec<ZoomLevel>, args: &Arguments) -> Result<ZoomLeve
     }
 }
 
+/// An interactive image picker for when multiple images are available
+fn image_picker(mut images: Vec<Box<dyn ZoomableImage>>) -> Result<Box<dyn ZoomableImage>, ZoomError> {
+    println!("Found the following images:");
+    for (i, image) in images.iter().enumerate() {
+        let title = image.title().unwrap_or_else(|| format!("Image {}", i + 1));
+        println!("{: >2}. {}", i, title);
+    }
+    loop {
+        println!("Which image do you want to download? ");
+        let line = stdin_line()?;
+        if let Some(idx) = parse_level_index(&line, images.len()) {
+            return Ok(images.swap_remove(idx));
+        }
+        error!("'{line}' is not a valid image number");
+    }
+}
+
+/// Choose an image from multiple options (interactive or automatic)
+fn choose_image(mut images: Vec<Box<dyn ZoomableImage>>, _args: &Arguments) -> Result<Box<dyn ZoomableImage>, ZoomError> {
+    match images.len() {
+        0 => Err(ZoomError::NoLevels),
+        1 => Ok(images.swap_remove(0)),
+        _ => {
+            // For now, just use interactive selection
+            // Later we could add command-line options to automatically select
+            image_picker(images)
+        }
+    }
+}
+
+/// A wrapper that holds both the ZoomableImage and its extracted zoom levels
+struct ImageWithLevels {
+    _image: Box<dyn ZoomableImage>,
+    zoom_levels: ZoomLevels,
+    title: Option<String>,
+}
+
+/// Extract zoom levels from a ZoomableImage and create a wrapper
+fn extract_zoom_levels_from_image(image: Box<dyn ZoomableImage>) -> Result<ImageWithLevels, ZoomError> {
+    let _title = image.title();
+    // For our current implementations, we need to work around the trait object limitation
+    // by getting the zoom levels in a different way. For now, we'll return an error
+    // that will trigger the fallback to the old method.
+    Err(ZoomError::NoLevels)
+}
+
 /// Finds the appropriate zoomlevel for a given size if one is specified,
 async fn find_zoomlevel(args: &Arguments) -> Result<ZoomLevel, ZoomError> {
     let mut dezoomer = args.find_dezoomer()?;
     let uri = args.choose_input_uri()?;
     let http_client = client(args.headers(), args, Some(&uri))?;
     debug!("Trying to locate a zoomable image...");
+    
+    // For now, we'll use the old method as fallback since our ZoomableImage trait objects
+    // can't return zoom levels yet. The new architecture is in place but needs more work
+    // to properly support the trait object pattern.
+    debug!("Using zoom_levels method (new architecture coming in future steps)");
     let zoom_levels: Vec<ZoomLevel> = list_tiles(dezoomer.as_mut(), &http_client, &uri).await?;
     choose_level(zoom_levels, args)
 }
