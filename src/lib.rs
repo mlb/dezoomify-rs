@@ -287,34 +287,27 @@ fn choose_image(mut images: Vec<Box<dyn ZoomableImage>>, _args: &Arguments) -> R
     }
 }
 
-/// A wrapper that holds extracted zoom levels and title
-struct ImageWithLevels {
-    zoom_levels: ZoomLevels,
-    title: Option<String>,
-}
 
-/// Extract zoom levels from a ZoomableImage and create a wrapper
-fn extract_zoom_levels_from_image(image: Box<dyn ZoomableImage>) -> Result<ImageWithLevels, ZoomError> {
-    let title = image.title();
-    let zoom_levels = image.into_zoom_levels().map_err(|e| ZoomError::Dezoomer { source: e })?;
-    Ok(ImageWithLevels {
-        zoom_levels,
-        title,
-    })
-}
 
 /// Finds the appropriate zoomlevel for a given size if one is specified,
 async fn find_zoomlevel(args: &Arguments) -> Result<ZoomLevel, ZoomError> {
-    let mut dezoomer = args.find_dezoomer()?;
     let uri = args.choose_input_uri()?;
     let http_client = client(args.headers(), args, Some(&uri))?;
     debug!("Trying to locate a zoomable image...");
     
-    // For now, we'll use the old method as fallback since our ZoomableImage trait objects
-    // can't return zoom levels yet. The new architecture is in place but needs more work
-    // to properly support the trait object pattern.
-    debug!("Using zoom_levels method (new architecture coming in future steps)");
-    let zoom_levels: Vec<ZoomLevel> = list_tiles(dezoomer.as_mut(), &http_client, &uri).await?;
+    // Use the new unified processing pipeline
+    let images = get_images_from_uri(args, &http_client, &uri).await?;
+    debug!("Found {} zoomable images", images.len());
+    
+    // Select an image from the available options
+    let selected_image = choose_image(images, args)?;
+    debug!("Selected image: {:?}", selected_image.title());
+    
+    // Extract zoom levels from the selected image
+    let zoom_levels = selected_image.into_zoom_levels().map_err(|e| ZoomError::Dezoomer { source: e })?;
+    debug!("Extracted {} zoom levels", zoom_levels.len());
+    
+    // Select a zoom level from the available options
     choose_level(zoom_levels, args)
 }
 
