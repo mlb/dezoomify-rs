@@ -90,11 +90,14 @@ async fn get_dezoomer_result(
     }
 }
 
+/// Type alias for the complex future return type
+type ProcessImageUrlsFuture<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Box<dyn ZoomableImage>>, ZoomError>> + 'a>>;
+
 /// Process a list of image URLs by trying each dezoomer on each URL
 fn process_image_urls(
     urls: Vec<ZoomableImageUrl>,
     http: &Client,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Box<dyn ZoomableImage>>, ZoomError>> + '_>> {
+) -> ProcessImageUrlsFuture<'_> {
     Box::pin(async move {
         use crate::auto::all_dezoomers;
         
