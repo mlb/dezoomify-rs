@@ -225,21 +225,25 @@ impl Dezoomer for IIIF {
 
 **Remarks:** Framework infrastructure successfully added. The new `dezoomer_result()` method is supported and processing functions are in place. Committed as faf5bd2.
 
-#### Step 7.2: Implement URL Recursive Processing 🔄 CURRENT
+#### Step 7.2: Implement URL Recursive Processing ✅ DONE
 **Tasks:**
-1. 🔄 Create `process_image_urls()` function to handle `DezoomerResult::ImageUrls`
-2. 🔄 Implement iterative approach to avoid async recursion issues
-3. 🔄 Add proper error handling and logging for URL processing
+1. ✅ Create `process_image_urls()` function to handle `DezoomerResult::ImageUrls`
+2. ✅ Implement iterative approach with Box::pin for async recursion
+3. ✅ Add proper error handling and logging for URL processing
 
-**Files to modify:** `src/lib.rs`
+**Files modified:** `src/lib.rs`
 
-#### Step 7.3: Activate New Processing Pipeline
+**Remarks:** Successfully implemented recursive URL processing that can handle nested URL structures (e.g., IIIF manifests containing URLs to info.json files). Uses Box::pin to handle async recursion safely. Committed as 38758b2.
+
+#### Step 7.3: Activate New Processing Pipeline ✅ DONE
 **Tasks:**
-1. Replace fallback with actual new processing logic in `find_zoomlevel()`
-2. Test image selection with multiple images from IIIF manifests
-3. Test URL processing with bulk text files
+1. ✅ Replace fallback with actual new processing logic in `find_zoomlevel()`
+2. ✅ Test image selection with multiple images from IIIF manifests
+3. ✅ Test URL processing with bulk text files
 
-**Files to modify:** `src/lib.rs`
+**Files modified:** `src/lib.rs`
+
+**Remarks:** New unified processing pipeline is now live! All input types (single images, IIIF manifests, bulk text files) use the same flow: URI → images → image selection → zoom levels → level selection. Cleaned up unused code. Committed as 7917430.
 
 #### Step 7.4: Add Command Line Options for Image Selection
 **Tasks:**
@@ -262,7 +266,7 @@ impl Dezoomer for IIIF {
 - 🔄 Integration tests with various input types
 - 🔄 Manual testing with real-world inputs
 
-**Current Status:** Step 7.1 complete. Starting Step 7.2 - implementing URL recursive processing.
+**Current Status:** Steps 7.1-7.3 complete. New multi-image processing pipeline is live! Next: Step 7.4 - adding command line options for image selection.
 
 ### Step 8: Remove Old Bulk Processing
 **Files to modify/remove:** `src/bulk/` directory

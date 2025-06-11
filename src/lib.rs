@@ -205,6 +205,15 @@ fn resolve_level_index(requested: usize, available_count: usize) -> usize {
     }
 }
 
+/// Gets the actual image index to use, handling out-of-bounds requests
+fn resolve_image_index(requested: usize, available_count: usize) -> usize {
+    if requested < available_count {
+        requested
+    } else {
+        available_count - 1
+    }
+}
+
 /// Finds the position of a level with the specified size hint
 fn find_level_with_size(levels: &[ZoomLevel], target_size: Vec2d) -> Option<usize> {
     levels
@@ -275,13 +284,31 @@ fn image_picker(mut images: Vec<Box<dyn ZoomableImage>>) -> Result<Box<dyn Zooma
 }
 
 /// Choose an image from multiple options (interactive or automatic)
-fn choose_image(mut images: Vec<Box<dyn ZoomableImage>>, _args: &Arguments) -> Result<Box<dyn ZoomableImage>, ZoomError> {
+fn choose_image(mut images: Vec<Box<dyn ZoomableImage>>, args: &Arguments) -> Result<Box<dyn ZoomableImage>, ZoomError> {
     match images.len() {
         0 => Err(ZoomError::NoLevels),
         1 => Ok(images.swap_remove(0)),
         _ => {
-            // For now, just use interactive selection
-            // Later we could add command-line options to automatically select
+            if let Some(requested_index) = args.image_index {
+                let actual_index = resolve_image_index(requested_index, images.len());
+                if actual_index == requested_index {
+                    info!("Selected image {} as requested", requested_index);
+                } else {
+                    info!(
+                        "Requested image index {} not available. Using last one ({})",
+                        requested_index, actual_index
+                    );
+                }
+                return Ok(images.swap_remove(actual_index));
+            }
+
+            // In bulk mode, automatically select the first image to avoid interactive prompts
+            if args.is_bulk_mode() {
+                info!("Bulk mode: automatically selecting first image (index 0)");
+                return Ok(images.swap_remove(0));
+            }
+
+            // Interactive selection when no command line option is provided
             image_picker(images)
         }
     }
@@ -435,6 +462,15 @@ mod tests {
         assert_eq!(resolve_level_index(4, 5), 4); // Last valid index
         assert_eq!(resolve_level_index(10, 5), 4); // Out of bounds, use last
         assert_eq!(resolve_level_index(100, 3), 2); // Way out of bounds
+    }
+
+    #[test]
+    fn test_resolve_image_index() {
+        assert_eq!(resolve_image_index(1, 3), 1); // Within bounds
+        assert_eq!(resolve_image_index(0, 3), 0); // First index
+        assert_eq!(resolve_image_index(2, 3), 2); // Last valid index
+        assert_eq!(resolve_image_index(5, 3), 2); // Out of bounds, use last
+        assert_eq!(resolve_image_index(100, 1), 0); // Way out of bounds
     }
 
     #[test]

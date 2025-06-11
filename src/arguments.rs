@@ -49,6 +49,12 @@ pub struct Arguments {
     #[arg(long = "zoom-level")]
     pub zoom_level: Option<usize>,
 
+    /// Select a specific image by its index (0-based) when multiple images are found.
+    /// If not specified, the program will ask interactively when multiple images are available.
+    /// If the specified index doesn't exist, falls back to the last one.
+    #[arg(long = "image-index")]
+    pub image_index: Option<usize>,
+
     /// Degree of parallelism to use. At most this number of
     /// tiles will be downloaded at the same time.
     #[arg(short = 'n', long = "parallelism", default_value = "16")]
@@ -141,6 +147,7 @@ impl Default for Arguments {
             max_width: None,
             max_height: None,
             zoom_level: None,
+            image_index: None,
             parallelism: 16,
             retries: 1,
             compression: 20,
