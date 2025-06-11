@@ -64,6 +64,31 @@ pub type ZoomLevel = Box<dyn TileProvider + Sync>;
 /// A collection of multiple resolutions at which an image is available
 pub type ZoomLevels = Vec<ZoomLevel>;
 
+/// Represents a single zoomable image with multiple resolution levels
+pub trait ZoomableImage: Send + Sync + std::fmt::Debug {
+    /// Get all available zoom levels for this image
+    fn zoom_levels(&self) -> Result<ZoomLevels, DezoomerError>;
+    
+    /// Get a human-readable title for this image
+    fn title(&self) -> Option<String>;
+}
+
+/// A URL that can be processed by dezoomers to create ZoomableImages
+#[derive(Debug, Clone)]
+pub struct ZoomableImageUrl {
+    pub url: String,
+    pub title: Option<String>,
+}
+
+/// Result type for dezoomer operations
+#[derive(Debug)]
+pub enum DezoomerResult {
+    /// Direct zoomable images (e.g., from IIIF manifests, krpano configs)
+    Images(Vec<Box<dyn ZoomableImage>>),
+    /// URLs that need further processing by other dezoomers
+    ImageUrls(Vec<ZoomableImageUrl>),
+}
+
 pub trait IntoZoomLevels {
     fn into_zoom_levels(self) -> ZoomLevels;
 }
