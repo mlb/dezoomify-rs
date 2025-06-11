@@ -18,6 +18,39 @@ pub mod tile_info;
 #[derive(Default)]
 pub struct IIIF;
 
+/// Represents a single IIIF image with metadata from a manifest or info.json
+#[derive(Debug)]
+pub struct IIIFZoomableImage {
+    zoom_levels: ZoomLevels,
+    title: Option<String>,
+}
+
+impl IIIFZoomableImage {
+    pub fn new(zoom_levels: ZoomLevels, title: Option<String>) -> Self {
+        IIIFZoomableImage { zoom_levels, title }
+    }
+}
+
+impl ZoomableImage for IIIFZoomableImage {
+    fn zoom_levels(&self) -> Result<ZoomLevels, DezoomerError> {
+        Err(DezoomerError::DownloadError {
+            msg: "IIIFZoomableImage zoom levels cannot be retrieved multiple times".to_string()
+        })
+    }
+    
+    fn title(&self) -> Option<String> {
+        self.title.clone()
+    }
+}
+
+/// Determines the best title for an image from IIIF manifest metadata
+fn determine_title(image_info: &manifest_types::ExtractedImageInfo) -> Option<String> {
+    // Prioritize metadata title, then canvas label, then manifest label
+    image_info.metadata_title.clone()
+        .or_else(|| image_info.canvas_label.clone())
+        .or_else(|| image_info.manifest_label.clone())
+}
+
 custom_error! {pub IIIFError
     JsonError{source: serde_json::Error} = "Invalid IIIF info.json file: {source}",
     ManifestParseError{description: String} = "Could not parse IIIF manifest: {description}",
@@ -39,6 +72,41 @@ impl Dezoomer for IIIF {
         let contents = with_contents.contents;
         let uri = with_contents.uri;
         Ok(zoom_levels(uri, contents)?)
+    }
+    
+    fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
+        let with_contents = data.with_contents()?;
+        let contents = with_contents.contents;
+        let uri = with_contents.uri;
+        
+        // Try to parse as IIIF manifest first
+        match parse_iiif_manifest_from_bytes(contents, uri) {
+            Ok(image_infos) if !image_infos.is_empty() => {
+                // Successfully parsed as manifest with images
+                let image_urls: Vec<ZoomableImageUrl> = image_infos
+                    .into_iter()
+                    .map(|image_info| {
+                        let title = determine_title(&image_info);
+                        ZoomableImageUrl {
+                            url: image_info.image_uri,
+                            title,
+                        }
+                    })
+                    .collect();
+                
+                Ok(DezoomerResult::ImageUrls(image_urls))
+            }
+            _ => {
+                // Not a manifest or failed to parse as manifest, try as info.json
+                match zoom_levels(uri, contents) {
+                    Ok(levels) => {
+                        let image = IIIFZoomableImage::new(levels, None);
+                        Ok(DezoomerResult::Images(vec![Box::new(image)]))
+                    }
+                    Err(e) => Err(e.into())
+                }
+            }
+        }
     }
 }
 
@@ -503,5 +571,92 @@ mod manifest_parsing_tests {
         // The current implementation logs a warning and proceeds.
         let infos = result.unwrap();
         assert_eq!(infos.len(), 0); // No items that would yield images.
+    }
+
+    #[test]
+    fn test_dezoomer_result_with_manifest() {
+        let mut dezoomer = IIIF;
+        let manifest_data = r#"
+        {
+          "@context": "http://iiif.io/api/presentation/3/context.json",
+          "id": "https://example.org/iiif/book1/manifest",
+          "type": "Manifest",
+          "label": { "en": [ "Test Book" ] },
+          "items": [
+            {
+              "id": "canvas1",
+              "type": "Canvas",
+              "label": { "en": [ "Page 1" ] },
+              "items": [
+                {
+                  "id": "anno_page1",
+                  "type": "AnnotationPage",
+                  "items": [
+                    {
+                      "id": "anno1",
+                      "type": "Annotation",
+                      "motivation": "painting",
+                      "body": {
+                        "id": "image.jpg",
+                        "type": "Image",
+                        "service": [
+                          {
+                            "id": "https://example.com/iiif/page1",
+                            "type": "ImageService3"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        "#.as_bytes();
+        
+        let input = DezoomerInput {
+            uri: "https://example.com/manifest.json".to_string(),
+            contents: PageContents::Success(manifest_data.to_vec()),
+        };
+        
+        let result = dezoomer.dezoomer_result(&input).unwrap();
+        match result {
+            DezoomerResult::ImageUrls(urls) => {
+                assert_eq!(urls.len(), 1);
+                assert_eq!(urls[0].url, "https://example.com/iiif/page1/info.json");
+                assert_eq!(urls[0].title, Some("Page 1".to_string()));
+            }
+            _ => panic!("Expected ImageUrls result"),
+        }
+    }
+
+    #[test]
+    fn test_dezoomer_result_with_info_json() {
+        let mut dezoomer = IIIF;
+        let info_data = r#"{
+          "@context" : "http://iiif.io/api/image/2/context.json",
+          "@id" : "https://example.com/image",
+          "protocol" : "http://iiif.io/api/image",
+          "width" : 1000,
+          "height" : 1500,
+          "tiles" : [
+             { "width" : 512, "height" : 512, "scaleFactors" : [ 1, 2, 4 ] }
+          ]
+        }"#.as_bytes();
+        
+        let input = DezoomerInput {
+            uri: "https://example.com/image/info.json".to_string(),
+            contents: PageContents::Success(info_data.to_vec()),
+        };
+        
+        let result = dezoomer.dezoomer_result(&input).unwrap();
+        match result {
+            DezoomerResult::Images(images) => {
+                assert_eq!(images.len(), 1);
+                assert_eq!(images[0].title(), None);
+            }
+            _ => panic!("Expected Images result"),
+        }
     }
 }
