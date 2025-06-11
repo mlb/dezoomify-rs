@@ -34,7 +34,7 @@ impl Dezoomer for BulkTextDezoomer {
             });
         }
 
-        Ok(DezoomerResult::ImageUrls(urls))
+        Ok(dezoomer_result_from_urls(urls))
     }
 }
 
@@ -160,13 +160,19 @@ mod tests {
         };
 
         let result = dezoomer.dezoomer_result(&input).unwrap();
-        match result {
-            DezoomerResult::ImageUrls(urls) => {
-                assert_eq!(urls.len(), 2);
-                assert_eq!(urls[0].url, "http://example.com/image1.jpg");
-                assert_eq!(urls[1].url, "https://example.org/manifest.json");
-            }
-            _ => panic!("Expected ImageUrls result"),
+        assert_eq!(result.len(), 2);
+
+        // Check that they are ZoomableImage::ImageUrl variants
+        if let ZoomableImage::ImageUrl(ref url1) = result[0] {
+            assert_eq!(url1.url, "http://example.com/image1.jpg");
+        } else {
+            panic!("Expected ZoomableImage::ImageUrl");
+        }
+
+        if let ZoomableImage::ImageUrl(ref url2) = result[1] {
+            assert_eq!(url2.url, "https://example.org/manifest.json");
+        } else {
+            panic!("Expected ZoomableImage::ImageUrl");
         }
     }
 

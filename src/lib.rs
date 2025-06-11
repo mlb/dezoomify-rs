@@ -20,7 +20,7 @@ use output_file::get_outname;
 use tile::Tile;
 pub use vec2d::Vec2d;
 
-use crate::dezoomer::{DezoomerResult, PageContents, ZoomableImage, ZoomableImageUrl};
+use crate::dezoomer::{DezoomerResult, PageContents, ZoomableImage};
 use crate::encoder::tile_buffer::TileBuffer;
 
 use crate::output_file::reserve_output_file;
@@ -86,168 +86,16 @@ async fn get_dezoomer_result(
     }
 }
 
-/// Type alias for the complex future return type
-type ProcessImageUrlsFuture<'a> = std::pin::Pin<
-    Box<dyn std::future::Future<Output = Result<Vec<Box<dyn ZoomableImage>>, ZoomError>> + 'a>,
->;
-
-/// Reorder dezoomers to prioritize those most likely to handle the given URL
-fn prioritize_dezoomers_for_url(
-    url: &str,
-    mut dezoomers: Vec<Box<dyn Dezoomer>>,
-) -> Vec<Box<dyn Dezoomer>> {
-    // Define URL patterns and their preferred dezoomers
-    let patterns = [
-        ("info.json", "iiif"),
-        ("iiif", "iiif"),
-        ("manifest.json", "iiif"),
-        (".dzi", "deepzoom"),
-        ("_files/", "deepzoom"),
-        ("?FIF", "IIPImage"),
-        ("tiles.xml", "krpano"),
-        ("ImageProperties.xml", "zoomify"),
-        ("TileGroup", "zoomify"),
-        ("digitalcollections.nypl.org", "nypl"),
-        ("{{", "generic"),
-    ];
-
-    // Find the best matching dezoomer
-    let preferred_dezoomer = patterns
-        .iter()
-        .find(|(pattern, _)| url.contains(pattern))
-        .map(|(_, dezoomer)| *dezoomer);
-
-    if let Some(preferred_name) = preferred_dezoomer {
-        debug!(
-            "URL '{}' appears to match '{}' dezoomer, prioritizing it",
-            url, preferred_name
-        );
-
-        // Move the preferred dezoomer to the front
-        let preferred_idx = dezoomers.iter().position(|d| d.name() == preferred_name);
-        if let Some(idx) = preferred_idx {
-            let preferred = dezoomers.remove(idx);
-            dezoomers.insert(0, preferred);
-        }
-    }
-
-    dezoomers
-}
-
-/// Process a list of image URLs by trying each dezoomer on each URL
-fn process_image_urls(urls: Vec<ZoomableImageUrl>, http: &Client) -> ProcessImageUrlsFuture<'_> {
-    Box::pin(async move {
-        use crate::auto::all_dezoomers;
-
-        let mut all_images = Vec::new();
-
-        for url in urls {
-            debug!("Processing URL: {}", url.url);
-
-            // Reorder dezoomers to prioritize those most likely to handle this URL
-            let dezoomers = prioritize_dezoomers_for_url(&url.url, all_dezoomers(false));
-
-            // Try each dezoomer on this URL
-            let mut found_images = false;
-            for mut dezoomer in dezoomers {
-                debug!("Trying dezoomer '{}' on URL: {}", dezoomer.name(), url.url);
-
-                match get_dezoomer_result(dezoomer.as_mut(), http, &url.url).await {
-                    Ok(result) => match result {
-                        DezoomerResult::Images(mut images) => {
-                            debug!(
-                                "Dezoomer '{}' found {} images for URL: {}",
-                                dezoomer.name(),
-                                images.len(),
-                                url.url
-                            );
-
-                            // Preserve title from URL if image doesn't have one
-                            if let Some(ref title) = url.title {
-                                for image in &mut images {
-                                    if image.title().is_none() {
-                                        // We need to extract zoom levels and recreate with title
-                                        // This is a limitation of the current trait design
-                                        debug!(
-                                            "Would set title '{}' for image from URL {}",
-                                            title, url.url
-                                        );
-                                    }
-                                }
-                            }
-
-                            all_images.extend(images);
-                            found_images = true;
-                            break; // Found images with this dezoomer, stop trying others
-                        }
-                        DezoomerResult::ImageUrls(nested_urls) => {
-                            debug!(
-                                "Dezoomer '{}' found {} nested URLs for URL: {}",
-                                dezoomer.name(),
-                                nested_urls.len(),
-                                url.url
-                            );
-                            // Recursively process nested URLs
-                            match process_image_urls(nested_urls, http).await {
-                                Ok(nested_images) => {
-                                    all_images.extend(nested_images);
-                                    found_images = true;
-                                    break; // Successfully processed nested URLs
-                                }
-                                Err(e) => {
-                                    debug!(
-                                        "Failed to process nested URLs from '{}': {}",
-                                        dezoomer.name(),
-                                        e
-                                    );
-                                    // Continue trying other dezoomers
-                                }
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        debug!(
-                            "Dezoomer '{}' failed for URL '{}': {}",
-                            dezoomer.name(),
-                            url.url,
-                            e
-                        );
-                        // Continue trying other dezoomers
-                    }
-                }
-            }
-
-            if !found_images {
-                error!("No dezoomer could process URL: {}", url.url);
-            }
-        }
-
-        if all_images.is_empty() {
-            Err(ZoomError::NoLevels)
-        } else {
-            Ok(all_images)
-        }
-    })
-}
-
-/// Process an input URI to extract zoomable images, handling both direct images and URL lists
+/// Process an input URI to extract zoomable images
 async fn get_images_from_uri(
     args: &Arguments,
     http: &Client,
     uri: &str,
-) -> Result<Vec<Box<dyn ZoomableImage>>, ZoomError> {
+) -> Result<Vec<ZoomableImage>, ZoomError> {
     let mut dezoomer = args.find_dezoomer()?;
-
-    match get_dezoomer_result(dezoomer.as_mut(), http, uri).await? {
-        DezoomerResult::Images(images) => {
-            debug!("Found {} direct images", images.len());
-            Ok(images)
-        }
-        DezoomerResult::ImageUrls(urls) => {
-            debug!("Found {} URLs to process", urls.len());
-            process_image_urls(urls, http).await
-        }
-    }
+    let zoomable_images = get_dezoomer_result(dezoomer.as_mut(), http, uri).await?;
+    debug!("Found {} zoomable images", zoomable_images.len());
+    Ok(zoomable_images)
 }
 
 /// Validates a user input line as a level index
@@ -326,12 +174,12 @@ fn choose_level(mut levels: Vec<ZoomLevel>, args: &Arguments) -> Result<ZoomLeve
 }
 
 /// An interactive image picker for when multiple images are available
-fn image_picker(
-    mut images: Vec<Box<dyn ZoomableImage>>,
-) -> Result<Box<dyn ZoomableImage>, ZoomError> {
+fn image_picker(mut images: Vec<ZoomableImage>) -> Result<ZoomableImage, ZoomError> {
     println!("Found the following images:");
     for (i, image) in images.iter().enumerate() {
-        let title = image.title().unwrap_or_else(|| format!("Image {}", i + 1));
+        let title = image
+            .title()
+            .unwrap_or_else(|| format!("Image {}", i + 1).into());
         println!("{: >2}. {}", i, title);
     }
     loop {
@@ -346,9 +194,9 @@ fn image_picker(
 
 /// Choose an image from multiple options (interactive or automatic)
 fn choose_image(
-    mut images: Vec<Box<dyn ZoomableImage>>,
+    mut images: Vec<ZoomableImage>,
     args: &Arguments,
-) -> Result<Box<dyn ZoomableImage>, ZoomError> {
+) -> Result<ZoomableImage, ZoomError> {
     match images.len() {
         0 => Err(ZoomError::NoLevels),
         1 => Ok(images.swap_remove(0)),
@@ -388,13 +236,14 @@ async fn find_zoomlevel(args: &Arguments) -> Result<ZoomLevel, ZoomError> {
     let images = get_images_from_uri(args, &http_client, &uri).await?;
     debug!("Found {} zoomable images", images.len());
 
-    // Select an image from the available options
+    // Select an image from the available options (before resolving)
     let selected_image = choose_image(images, args)?;
     debug!("Selected image: {:?}", selected_image.title());
 
-    // Extract zoom levels from the selected image
+    // NOW resolve the selected image to get its zoom levels
     let zoom_levels = selected_image
-        .into_zoom_levels()
+        .into_zoom_levels(&http_client)
+        .await
         .map_err(|e| ZoomError::Dezoomer { source: e })?;
     debug!("Extracted {} zoom levels", zoom_levels.len());
 
@@ -488,33 +337,21 @@ pub async fn process_bulk(args: &Arguments) -> Result<BulkStats, ZoomError> {
     let mut stats = BulkStats::new();
     let base_dir = current_dir()?;
 
-    match dezoomer_result {
-        DezoomerResult::Images(images) => {
-            // Direct images - process them all at once (original behavior)
-            stats.set_total(images.len());
-            info!("Found {} images to process in bulk mode", images.len());
-            debug!(
-                "Images discovered: {:?}",
-                images
-                    .iter()
-                    .map(|img| img.title().unwrap_or_else(|| "Untitled".to_string()))
-                    .collect::<Vec<_>>()
-            );
+    // Process each ZoomableImage in bulk mode
+    stats.set_total(dezoomer_result.len());
+    info!(
+        "Found {} images to process in bulk mode",
+        dezoomer_result.len()
+    );
+    debug!(
+        "Images discovered: {:?}",
+        dezoomer_result
+            .iter()
+            .map(|img| img.title().unwrap_or_else(|| "Untitled".into()))
+            .collect::<Vec<_>>()
+    );
 
-            process_bulk_images(images, args, &mut stats, &base_dir).await?;
-        }
-        DezoomerResult::ImageUrls(urls) => {
-            // URLs that need individual processing - process them one by one to avoid downloading all metadata upfront
-            stats.set_total(urls.len());
-            info!("Found {} images to process in bulk mode", urls.len());
-            debug!(
-                "URLs discovered: {:?}",
-                urls.iter().map(|url| &url.url).collect::<Vec<_>>()
-            );
-
-            process_bulk_urls(urls, args, &http, &mut stats, &base_dir).await?;
-        }
-    }
+    process_bulk_zoomable_images(dezoomer_result, args, &http, &mut stats, &base_dir).await?;
 
     // Log final statistics
     info!("Bulk processing complete!");
@@ -528,176 +365,9 @@ pub async fn process_bulk(args: &Arguments) -> Result<BulkStats, ZoomError> {
     Ok(stats)
 }
 
-/// Process a list of direct ZoomableImage objects in bulk
-async fn process_bulk_images(
-    images: Vec<Box<dyn ZoomableImage>>,
-    args: &Arguments,
-    stats: &mut BulkStats,
-    base_dir: &Path,
-) -> Result<(), ZoomError> {
-    use log::{debug, trace, warn};
-
-    // Process each image individually
-    for (index, image) in images.into_iter().enumerate() {
-        let image_title = image
-            .title()
-            .unwrap_or_else(|| format!("Image_{}", index + 1));
-        debug!(
-            "Preparing image {}/{}: {}",
-            index + 1,
-            stats.total_images,
-            image_title
-        );
-
-        // Get zoom levels from the image
-        let zoom_levels = match image.into_zoom_levels() {
-            Ok(levels) => levels,
-            Err(e) => {
-                warn!(
-                    "Failed to get zoom levels for image {} ('{}'): {}",
-                    index + 1,
-                    image_title,
-                    e
-                );
-                stats.record_failure();
-                continue;
-            }
-        };
-
-        trace!(
-            "Zoom levels for image {}: {} levels available",
-            index + 1,
-            zoom_levels.len()
-        );
-
-        // Choose the appropriate zoom level using existing logic
-        let zoom_level = match choose_level(zoom_levels, args) {
-            Ok(level) => level,
-            Err(e) => {
-                warn!(
-                    "Failed to choose zoom level for image {} ('{}'): {}",
-                    index + 1,
-                    image_title,
-                    e
-                );
-                stats.record_failure();
-                continue;
-            }
-        };
-
-        debug!(
-            "Selected zoom level for image {}: {} ({}x{})",
-            index + 1,
-            zoom_level.name(),
-            zoom_level.size_hint().map(|s| s.x).unwrap_or(0),
-            zoom_level.size_hint().map(|s| s.y).unwrap_or(0)
-        );
-
-        // Use get_outname to handle file collision properly, without args.outfile override
-        let save_as = if let Some(ref base_outfile) = args.outfile {
-            // In bulk mode with specified outfile, use index-based naming with collision handling
-            let base_path = generate_bulk_output_name(base_outfile, index);
-            get_outname(
-                &Some(base_path),
-                &zoom_level.title().or_else(|| Some(image_title.clone())),
-                base_dir,
-                zoom_level.size_hint(),
-            )
-        } else {
-            // Use the zoom level title if present, fallback to image title
-            get_outname(
-                &None,
-                &zoom_level.title().or_else(|| Some(image_title.clone())),
-                base_dir,
-                zoom_level.size_hint(),
-            )
-        };
-
-        // Reserve the output file to avoid collisions
-        if let Err(e) = reserve_output_file(&save_as) {
-            let file_name = save_as
-                .file_name()
-                .map(|n| n.to_string_lossy())
-                .unwrap_or_else(|| "unknown".into());
-            warn!(
-                "Failed to prepare output file '{}' for image {} ('{}'): {}",
-                file_name,
-                index + 1,
-                image_title,
-                e
-            );
-            stats.record_failure();
-            continue;
-        };
-
-        let tile_buffer = match create_tile_buffer(save_as.clone(), args.compression).await {
-            Ok(buffer) => buffer,
-            Err(e) => {
-                let file_name = save_as
-                    .file_name()
-                    .map(|n| n.to_string_lossy())
-                    .unwrap_or_else(|| "unknown".into());
-                warn!(
-                    "Failed to create tile buffer for file '{}' (image {} '{}'): {}",
-                    file_name,
-                    index + 1,
-                    image_title,
-                    e
-                );
-                stats.record_failure();
-                continue;
-            }
-        };
-
-        // Now show processing message since we're about to start downloading
-        info!(
-            "Processing image {}/{}: {} -> {}",
-            index + 1,
-            stats.total_images,
-            image_title,
-            save_as.file_name().unwrap_or_default().to_string_lossy()
-        );
-
-        match dezoomify_level(args, zoom_level, tile_buffer).await {
-            Ok(()) => {
-                info!(
-                    "Successfully saved image {} to {}",
-                    index + 1,
-                    save_as.display()
-                );
-                stats.record_success();
-            }
-            Err(ZoomError::PartialDownload {
-                successful_tiles,
-                total_tiles,
-                ..
-            }) => {
-                warn!(
-                    "Image {} completed with partial download: {}/{} tiles",
-                    index + 1,
-                    successful_tiles,
-                    total_tiles
-                );
-                stats.record_partial();
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to process image {} ('{}'): {}",
-                    index + 1,
-                    image_title,
-                    e
-                );
-                stats.record_failure();
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Process a list of URLs one by one to avoid downloading all metadata upfront
-async fn process_bulk_urls(
-    urls: Vec<ZoomableImageUrl>,
+/// Process a list of ZoomableImage objects in bulk - resolve each one to zoom levels as needed
+async fn process_bulk_zoomable_images(
+    images: Vec<ZoomableImage>,
     args: &Arguments,
     http: &Client,
     stats: &mut BulkStats,
@@ -705,51 +375,21 @@ async fn process_bulk_urls(
 ) -> Result<(), ZoomError> {
     use log::{debug, trace, warn};
 
-    // Process each URL individually - download info.json, process, download image, then move to next
-    for (index, zoomable_url) in urls.into_iter().enumerate() {
-        let image_title = zoomable_url
-            .title
-            .clone()
-            .unwrap_or_else(|| format!("Image_{}", index + 1));
+    // Process each ZoomableImage individually
+    for (index, zoomable_image) in images.into_iter().enumerate() {
+        let image_title = zoomable_image
+            .title()
+            .unwrap_or_else(|| format!("Image_{}", index + 1).into())
+            .to_string();
         debug!(
-            "Processing URL {}/{}: {} ({})",
+            "Preparing image {}/{}: {}",
             index + 1,
             stats.total_images,
-            image_title,
-            zoomable_url.url
+            image_title
         );
 
-        // Process this single URL to get ZoomableImage(s)
-        let images = match process_image_urls(vec![zoomable_url], http).await {
-            Ok(images) => images,
-            Err(e) => {
-                warn!(
-                    "Failed to process URL for image {} ('{}'): {}",
-                    index + 1,
-                    image_title,
-                    e
-                );
-                stats.record_failure();
-                continue;
-            }
-        };
-
-        // Should get exactly one image back
-        let image = match images.into_iter().next() {
-            Some(img) => img,
-            None => {
-                warn!(
-                    "No image returned from URL for image {} ('{}')",
-                    index + 1,
-                    image_title
-                );
-                stats.record_failure();
-                continue;
-            }
-        };
-
-        // Get zoom levels from the image
-        let zoom_levels = match image.into_zoom_levels() {
+        // Resolve the ZoomableImage to get zoom levels
+        let zoom_levels = match zoomable_image.into_zoom_levels(http).await {
             Ok(levels) => levels,
             Err(e) => {
                 warn!(
@@ -1137,44 +777,6 @@ mod tests {
     }
 
     #[test]
-    fn test_prioritize_dezoomers_for_url() {
-        use crate::auto::all_dezoomers;
-
-        // Test IIIF URL prioritization
-        let iiif_url = "https://example.com/iiif/service/info.json";
-        let dezoomers = all_dezoomers(false);
-        let prioritized = prioritize_dezoomers_for_url(iiif_url, dezoomers);
-
-        // IIIF dezoomer should be first
-        assert_eq!(prioritized[0].name(), "iiif");
-
-        // Test Zoomify URL prioritization
-        let zoomify_url = "https://example.com/ImageProperties.xml";
-        let dezoomers = all_dezoomers(false);
-        let prioritized = prioritize_dezoomers_for_url(zoomify_url, dezoomers);
-
-        // Zoomify dezoomer should be first
-        assert_eq!(prioritized[0].name(), "zoomify");
-
-        // Test DeepZoom URL prioritization
-        let dzi_url = "https://example.com/image.dzi";
-        let dezoomers = all_dezoomers(false);
-        let prioritized = prioritize_dezoomers_for_url(dzi_url, dezoomers);
-
-        // DeepZoom dezoomer should be first
-        assert_eq!(prioritized[0].name(), "deepzoom");
-
-        // Test unknown URL - should preserve original order
-        let unknown_url = "https://example.com/unknown.xyz";
-        let dezoomers = all_dezoomers(false);
-        let original_first = dezoomers[0].name();
-        let prioritized = prioritize_dezoomers_for_url(unknown_url, dezoomers);
-
-        // Should preserve original order for unknown URLs
-        assert_eq!(prioritized[0].name(), original_first);
-    }
-
-    #[test]
     fn test_generate_bulk_output_name() {
         use std::path::Path;
 
@@ -1232,32 +834,6 @@ mod tests {
         assert_eq!(stats.partial_downloads, 1);
         assert_eq!(stats.failed_images, 3);
         assert_eq!(stats.total_images, 10); // Should remain unchanged
-    }
-
-    #[test]
-    fn test_prioritize_dezoomers_edge_cases() {
-        use crate::auto::all_dezoomers;
-
-        // Test empty URL
-        let empty_url = "";
-        let dezoomers = all_dezoomers(false);
-        let original_first = dezoomers[0].name();
-        let prioritized = prioritize_dezoomers_for_url(empty_url, dezoomers);
-        assert_eq!(prioritized[0].name(), original_first);
-
-        // Test multiple pattern matches - should prioritize first match
-        let iiif_info_url = "https://example.com/iiif/service/info.json";
-        let dezoomers = all_dezoomers(false);
-        let prioritized = prioritize_dezoomers_for_url(iiif_info_url, dezoomers);
-        assert_eq!(prioritized[0].name(), "iiif");
-
-        // Test case insensitive matching
-        let zoomify_upper = "https://example.com/IMAGEPROPERTIES.XML";
-        let dezoomers = all_dezoomers(false);
-        let original_first = dezoomers[0].name();
-        let prioritized = prioritize_dezoomers_for_url(zoomify_upper, dezoomers);
-        // Current implementation is case-sensitive, so uppercase won't match
-        assert_eq!(prioritized[0].name(), original_first);
     }
 
     #[test]

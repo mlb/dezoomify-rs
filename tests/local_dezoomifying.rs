@@ -370,142 +370,131 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     Ok(())
 }
 
-#[cfg(test)]
-mod bulk_output_naming_tests {
-    use super::*;
-    use dezoomify_rs::{Arguments, process_bulk};
-    use std::fs::File;
-    use std::io::Write;
-    use tempdir::TempDir;
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bulk_mode_uses_image_titles_for_iiif_manifest() {
+    // Get workspace root to use absolute paths
+    let workspace_root = get_workspace_root();
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_bulk_mode_uses_image_titles_for_iiif_manifest() {
-        // Get workspace root to use absolute paths
-        let workspace_root = get_workspace_root();
+    // Create a temporary directory for the test
+    let temp_dir = TempDir::new("dezoomify-rs-bulk-title-test").unwrap();
 
-        // Create a temporary directory for the test
-        let temp_dir = TempDir::new("dezoomify-rs-bulk-title-test").unwrap();
+    // Create a bulk URLs file with a simple test manifest
+    let bulk_file_path = temp_dir.path().join("urls.txt");
+    let mut bulk_file = File::create(&bulk_file_path).unwrap();
 
-        // Create a bulk URLs file with a simple test manifest
-        let bulk_file_path = temp_dir.path().join("urls.txt");
-        let mut bulk_file = File::create(&bulk_file_path).unwrap();
+    // Use absolute path to testdata
+    let zoomify_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
+    drop(bulk_file);
 
-        // Use absolute path to testdata
-        let zoomify_path =
-            workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
-        writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
-        drop(bulk_file);
+    // Setup arguments for bulk processing WITHOUT specifying outfile
+    let mut args: Arguments = Default::default();
+    let bulk_path_string = bulk_file_path.to_string_lossy().to_string();
+    args.bulk = Some(bulk_path_string);
+    args.largest = true;
+    args.retries = 0;
+    args.logging = "error".into();
 
-        // Setup arguments for bulk processing WITHOUT specifying outfile
-        let mut args: Arguments = Default::default();
-        let bulk_path_string = bulk_file_path.to_string_lossy().to_string();
-        args.bulk = Some(bulk_path_string);
-        args.largest = true;
-        args.retries = 0;
-        args.logging = "error".into();
+    // Set the working directory to the test temp dir for output
+    let original_dir = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&temp_dir).unwrap();
 
-        // Set the working directory to the test temp dir for output
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&temp_dir).unwrap();
+    // Run bulk processing
+    let result = process_bulk(&args).await;
 
-        // Run bulk processing
-        let result = process_bulk(&args).await;
+    // Restore original directory
+    std::env::set_current_dir(&original_dir).unwrap();
 
-        // Restore original directory
-        std::env::set_current_dir(&original_dir).unwrap();
+    let stats = result.unwrap();
+    assert_eq!(stats.total_images, 1);
+    assert_eq!(stats.successful_images, 1);
 
-        let stats = result.unwrap();
-        assert_eq!(stats.total_images, 1);
-        assert_eq!(stats.successful_images, 1);
+    // Check that the generated file uses the image title
+    let entries: Vec<_> = std::fs::read_dir(&temp_dir)
+        .unwrap()
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "jpg") {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
 
-        // Check that the generated file uses the image title
-        let entries: Vec<_> = std::fs::read_dir(&temp_dir)
-            .unwrap()
-            .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let path = entry.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "jpg") {
-                    Some(path)
-                } else {
-                    None
-                }
-            })
-            .collect();
+    assert_eq!(entries.len(), 1, "Expected exactly one output file");
+    let output_file = &entries[0];
+    let file_name_os = output_file.file_name().unwrap();
+    let filename = file_name_os.to_string_lossy();
 
-        assert_eq!(entries.len(), 1, "Expected exactly one output file");
-        let output_file = &entries[0];
-        let file_name_os = output_file.file_name().unwrap();
-        let filename = file_name_os.to_string_lossy();
+    // The filename should be based on the title (test_custom_size) from the Zoomify dezoomer
+    // NOT "dezoomified"
+    assert!(
+        filename.starts_with("test_custom_size"),
+        "Expected filename to start with 'test_custom_size', got: {}",
+        filename
+    );
+    assert!(
+        !filename.starts_with("dezoomified"),
+        "Filename should not start with 'dezoomified', got: {}",
+        filename
+    );
+}
 
-        // The filename should be based on the title (test_custom_size) from the Zoomify dezoomer
-        // NOT "dezoomified"
-        assert!(
-            filename.starts_with("test_custom_size"),
-            "Expected filename to start with 'test_custom_size', got: {}",
-            filename
-        );
-        assert!(
-            !filename.starts_with("dezoomified"),
-            "Filename should not start with 'dezoomified', got: {}",
-            filename
-        );
-    }
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bulk_mode_with_outfile_specified_still_uses_titles_in_naming() {
+    // Get workspace root to use absolute paths
+    let workspace_root = get_workspace_root();
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_bulk_mode_with_outfile_specified_still_uses_titles_in_naming() {
-        // Get workspace root to use absolute paths
-        let workspace_root = get_workspace_root();
+    // Test that even when outfile is specified, the title logic is preserved
+    let temp_dir = TempDir::new("dezoomify-rs-bulk-outfile-test").unwrap();
 
-        // Test that even when outfile is specified, the title logic is preserved
-        let temp_dir = TempDir::new("dezoomify-rs-bulk-outfile-test").unwrap();
+    let bulk_file_path = temp_dir.path().join("urls.txt");
+    let mut bulk_file = File::create(&bulk_file_path).unwrap();
 
-        let bulk_file_path = temp_dir.path().join("urls.txt");
-        let mut bulk_file = File::create(&bulk_file_path).unwrap();
+    // Use absolute path to testdata
+    let zoomify_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
+    drop(bulk_file);
 
-        // Use absolute path to testdata
-        let zoomify_path =
-            workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
-        writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
-        drop(bulk_file);
+    let mut args: Arguments = Default::default();
+    let bulk_path_string = bulk_file_path.to_string_lossy().to_string();
+    args.bulk = Some(bulk_path_string);
+    args.largest = true;
+    args.retries = 0;
+    args.logging = "error".into();
 
-        let mut args: Arguments = Default::default();
-        let bulk_path_string = bulk_file_path.to_string_lossy().to_string();
-        args.bulk = Some(bulk_path_string);
-        args.largest = true;
-        args.retries = 0;
-        args.logging = "error".into();
+    // Set a custom outfile - this should result in index-based naming but still use the title
+    args.outfile = Some(temp_dir.path().join("my_collection.jpg"));
 
-        // Set a custom outfile - this should result in index-based naming but still use the title
-        args.outfile = Some(temp_dir.path().join("my_collection.jpg"));
+    let stats = process_bulk(&args).await.unwrap();
+    assert_eq!(stats.total_images, 1);
+    assert_eq!(stats.successful_images, 1);
 
-        let stats = process_bulk(&args).await.unwrap();
-        assert_eq!(stats.total_images, 1);
-        assert_eq!(stats.successful_images, 1);
+    // When outfile is specified, it should use indexed naming with the base outfile name
+    let entries: Vec<_> = std::fs::read_dir(&temp_dir)
+        .unwrap()
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "jpg") {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
 
-        // When outfile is specified, it should use indexed naming with the base outfile name
-        let entries: Vec<_> = std::fs::read_dir(&temp_dir)
-            .unwrap()
-            .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let path = entry.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "jpg") {
-                    Some(path)
-                } else {
-                    None
-                }
-            })
-            .collect();
+    assert_eq!(entries.len(), 1, "Expected exactly one output file");
+    let output_file = &entries[0];
+    let file_name_os = output_file.file_name().unwrap();
+    let filename = file_name_os.to_string_lossy();
 
-        assert_eq!(entries.len(), 1, "Expected exactly one output file");
-        let output_file = &entries[0];
-        let file_name_os = output_file.file_name().unwrap();
-        let filename = file_name_os.to_string_lossy();
-
-        // With outfile specified, should use indexed naming
-        assert!(
-            filename.starts_with("my_collection_1"),
-            "Expected filename to start with 'my_collection_1', got: {}",
-            filename
-        );
-    }
+    // With outfile specified, should use indexed naming
+    assert!(
+        filename.starts_with("my_collection_1"),
+        "Expected filename to start with 'my_collection_1', got: {}",
+        filename
+    );
 }

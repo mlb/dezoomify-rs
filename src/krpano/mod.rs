@@ -24,7 +24,7 @@ impl KrpanoZoomableImage {
     }
 }
 
-impl ZoomableImage for KrpanoZoomableImage {
+impl ZoomableImageWithLevels for KrpanoZoomableImage {
     fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError> {
         Ok(self.zoom_levels)
     }
@@ -53,7 +53,7 @@ impl Dezoomer for KrpanoDezoomer {
     fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
         let DezoomerInputWithContents { uri, contents } = data.with_contents()?;
         let images = load_images_from_properties(uri, contents)?;
-        Ok(DezoomerResult::Images(images))
+        Ok(dezoomer_result_from_images(images))
     }
 }
 
@@ -123,12 +123,12 @@ fn load_from_properties(url: &str, contents: &[u8]) -> Result<ZoomLevels, Krpano
 fn load_images_from_properties(
     url: &str,
     contents: &[u8],
-) -> Result<Vec<Box<dyn ZoomableImage>>, KrpanoError> {
+) -> Result<Vec<Box<dyn ZoomableImageWithLevels>>, KrpanoError> {
     let image_properties: KrpanoMetadata = serde_xml_rs::from_reader(contents)?;
     let base_url = Arc::from(url);
     let global_title = image_properties.get_title().unwrap_or("").to_string();
 
-    let images: Vec<Box<dyn ZoomableImage>> = image_properties
+    let images: Vec<Box<dyn ZoomableImageWithLevels>> = image_properties
         .into_image_iter()
         .map(|ImageInfo { image, name }| {
             let root_tile_size = image.tilesize.map(Vec2d::square);
@@ -202,7 +202,8 @@ fn load_images_from_properties(
                 Some(title)
             };
 
-            Box::new(KrpanoZoomableImage::new(levels, image_title)) as Box<dyn ZoomableImage>
+            Box::new(KrpanoZoomableImage::new(levels, image_title))
+                as Box<dyn ZoomableImageWithLevels>
         })
         .collect();
 
@@ -355,12 +356,12 @@ fn test_dezoomer_result_single_image() {
     };
 
     let result = dezoomer.dezoomer_result(&input).unwrap();
-    match result {
-        DezoomerResult::Images(images) => {
-            assert_eq!(images.len(), 1);
-            assert_eq!(images[0].title(), None);
-        }
-        _ => panic!("Expected Images result"),
+    assert_eq!(result.len(), 1);
+
+    if let ZoomableImage::Image(ref image) = result[0] {
+        assert_eq!(image.title(), None);
+    } else {
+        panic!("Expected ZoomableImage::Image");
     }
 }
 
@@ -381,12 +382,12 @@ fn test_dezoomer_result_cube_faces() {
     };
 
     let result = dezoomer.dezoomer_result(&input).unwrap();
-    match result {
-        DezoomerResult::Images(images) => {
-            assert_eq!(images.len(), 1);
-            assert_eq!(images[0].title(), None);
-        }
-        _ => panic!("Expected Images result"),
+    assert_eq!(result.len(), 1);
+
+    if let ZoomableImage::Image(ref image) = result[0] {
+        assert_eq!(image.title(), None);
+    } else {
+        panic!("Expected ZoomableImage::Image");
     }
 }
 
@@ -401,15 +402,19 @@ fn test_dezoomer_result_multiple_scenes() {
     };
 
     let result = dezoomer.dezoomer_result(&input).unwrap();
-    match result {
-        DezoomerResult::Images(images) => {
-            assert_eq!(images.len(), 3);
+    assert_eq!(result.len(), 3);
 
-            let titles: Vec<Option<String>> = images.iter().map(|img| img.title()).collect();
-            assert!(titles.contains(&Some(" Saint Thomas (1618 - 1620) - Diego Velazquez - Museum of Fine Arts, Orleans ( France) scene_Color".to_string())));
-            assert!(titles.contains(&Some(" Saint Thomas (1618 - 1620) - Diego Velazquez - Museum of Fine Arts, Orleans ( France) scene_3D".to_string())));
-            assert!(titles.contains(&Some(" Saint Thomas (1618 - 1620) - Diego Velazquez - Museum of Fine Arts, Orleans ( France) scene_3Dcolor".to_string())));
-        }
-        _ => panic!("Expected Images result"),
-    }
+    let titles: Vec<Option<String>> = result
+        .iter()
+        .map(|zoomable_img| {
+            if let ZoomableImage::Image(image) = zoomable_img {
+                image.title()
+            } else {
+                panic!("Expected ZoomableImage::Image");
+            }
+        })
+        .collect();
+    assert!(titles.contains(&Some(" Saint Thomas (1618 - 1620) - Diego Velazquez - Museum of Fine Arts, Orleans ( France) scene_Color".to_string())));
+    assert!(titles.contains(&Some(" Saint Thomas (1618 - 1620) - Diego Velazquez - Museum of Fine Arts, Orleans ( France) scene_3D".to_string())));
+    assert!(titles.contains(&Some(" Saint Thomas (1618 - 1620) - Diego Velazquez - Museum of Fine Arts, Orleans ( France) scene_3Dcolor".to_string())));
 }

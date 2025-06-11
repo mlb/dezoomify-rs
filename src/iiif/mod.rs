@@ -31,7 +31,7 @@ impl IIIFZoomableImage {
     }
 }
 
-impl ZoomableImage for IIIFZoomableImage {
+impl ZoomableImageWithLevels for IIIFZoomableImage {
     fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError> {
         Ok(self.zoom_levels)
     }
@@ -107,7 +107,7 @@ impl Dezoomer for IIIF {
                             match zoom_levels(uri, contents) {
                                 Ok(levels) => {
                                     let image = IIIFZoomableImage::new(levels, None);
-                                    return Ok(DezoomerResult::Images(vec![Box::new(image)]));
+                                    return Ok(dezoomer_result_from_single_image(image));
                                 }
                                 Err(e) => return Err(e.into()),
                             }
@@ -127,7 +127,7 @@ impl Dezoomer for IIIF {
                                         })
                                         .collect();
 
-                                    return Ok(DezoomerResult::ImageUrls(image_urls));
+                                    return Ok(dezoomer_result_from_urls(image_urls));
                                 }
                                 Ok(_) => {
                                     // Empty image_infos, fall through to heuristic approach
@@ -150,7 +150,7 @@ impl Dezoomer for IIIF {
             match zoom_levels(uri, contents) {
                 Ok(levels) => {
                     let image = IIIFZoomableImage::new(levels, None);
-                    return Ok(DezoomerResult::Images(vec![Box::new(image)]));
+                    return Ok(dezoomer_result_from_single_image(image));
                 }
                 Err(_) => {
                     // Fall through to try as manifest
@@ -173,14 +173,14 @@ impl Dezoomer for IIIF {
                     })
                     .collect();
 
-                Ok(DezoomerResult::ImageUrls(image_urls))
+                Ok(dezoomer_result_from_urls(image_urls))
             }
             _ => {
                 // Not a manifest or failed to parse as manifest, try as info.json
                 match zoom_levels(uri, contents) {
                     Ok(levels) => {
                         let image = IIIFZoomableImage::new(levels, None);
-                        Ok(DezoomerResult::Images(vec![Box::new(image)]))
+                        Ok(dezoomer_result_from_single_image(image))
                     }
                     Err(e) => Err(e.into()),
                 }
@@ -707,13 +707,13 @@ mod manifest_parsing_tests {
         };
 
         let result = dezoomer.dezoomer_result(&input).unwrap();
-        match result {
-            DezoomerResult::ImageUrls(urls) => {
-                assert_eq!(urls.len(), 1);
-                assert_eq!(urls[0].url, "https://example.com/iiif/page1/info.json");
-                assert_eq!(urls[0].title, Some("Test Book - Page 1".to_string()));
-            }
-            _ => panic!("Expected ImageUrls result"),
+        assert_eq!(result.len(), 1);
+
+        if let ZoomableImage::ImageUrl(ref url) = result[0] {
+            assert_eq!(url.url, "https://example.com/iiif/page1/info.json");
+            assert_eq!(url.title, Some("Test Book - Page 1".to_string()));
+        } else {
+            panic!("Expected ZoomableImage::ImageUrl");
         }
     }
 
@@ -738,12 +738,12 @@ mod manifest_parsing_tests {
         };
 
         let result = dezoomer.dezoomer_result(&input).unwrap();
-        match result {
-            DezoomerResult::Images(images) => {
-                assert_eq!(images.len(), 1);
-                assert_eq!(images[0].title(), None);
-            }
-            _ => panic!("Expected Images result"),
+        assert_eq!(result.len(), 1);
+
+        if let ZoomableImage::Image(ref image) = result[0] {
+            assert_eq!(image.title(), None);
+        } else {
+            panic!("Expected ZoomableImage::Image");
         }
     }
 }
