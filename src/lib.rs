@@ -20,7 +20,7 @@ use output_file::get_outname;
 use tile::Tile;
 pub use vec2d::Vec2d;
 
-use crate::dezoomer::{PageContents, DezoomerResult, ZoomableImage};
+use crate::dezoomer::{PageContents, DezoomerResult, ZoomableImage, ZoomableImageUrl};
 use crate::encoder::tile_buffer::TileBuffer;
 
 use crate::output_file::reserve_output_file;
@@ -85,27 +85,19 @@ async fn list_tiles(
     }
 }
 
-/// Process a single dezoomer to get images, handling the NeedsData loop
-async fn get_images_from_dezoomer(
+/// Process a single dezoomer to get a result, handling the NeedsData loop
+async fn get_dezoomer_result(
     dezoomer: &mut dyn Dezoomer,
     http: &Client,
     uri: &str,
-) -> Result<Vec<Box<dyn ZoomableImage>>, ZoomError> {
+) -> Result<DezoomerResult, ZoomError> {
     let mut i = DezoomerInput {
         uri: String::from(uri),
         contents: PageContents::Unknown,
     };
     loop {
         match dezoomer.dezoomer_result(&i) {
-            Ok(result) => match result {
-                DezoomerResult::Images(images) => return Ok(images),
-                DezoomerResult::ImageUrls(urls) => {
-                    // For URLs, we need to process them with other dezoomers
-                    // For now, let's just return an empty list and handle this case later
-                    debug!("Got {} URLs that need further processing", urls.len());
-                    return Ok(Vec::new());
-                }
-            },
+            Ok(result) => return Ok(result),
             Err(DezoomerError::NeedsData { uri }) => {
                 let contents = fetch_uri(&uri, http).await.into();
                 debug!("Response for metadata file '{}': {:?}", uri, &contents);
@@ -113,6 +105,88 @@ async fn get_images_from_dezoomer(
                 i.contents = contents;
             }
             Err(e) => return Err(e.into()),
+        }
+    }
+}
+
+/// Process a list of image URLs by trying each dezoomer on each URL
+fn process_image_urls(
+    urls: Vec<ZoomableImageUrl>,
+    http: &Client,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<Box<dyn ZoomableImage>>, ZoomError>> + '_>> {
+    Box::pin(async move {
+        use crate::auto::all_dezoomers;
+        
+        let mut all_images = Vec::new();
+        
+        for url in urls {
+            debug!("Processing URL: {}", url.url);
+            
+            // Try each dezoomer on this URL
+            let mut found_images = false;
+            for mut dezoomer in all_dezoomers(false) {
+                debug!("Trying dezoomer '{}' on URL: {}", dezoomer.name(), url.url);
+                
+                match get_dezoomer_result(dezoomer.as_mut(), http, &url.url).await {
+                    Ok(result) => match result {
+                        DezoomerResult::Images(images) => {
+                            debug!("Dezoomer '{}' found {} images for URL: {}", dezoomer.name(), images.len(), url.url);
+                            all_images.extend(images);
+                            found_images = true;
+                            break; // Found images with this dezoomer, stop trying others
+                        }
+                        DezoomerResult::ImageUrls(nested_urls) => {
+                            debug!("Dezoomer '{}' found {} nested URLs for URL: {}", dezoomer.name(), nested_urls.len(), url.url);
+                            // Recursively process nested URLs
+                            match process_image_urls(nested_urls, http).await {
+                                Ok(nested_images) => {
+                                    all_images.extend(nested_images);
+                                    found_images = true;
+                                    break; // Successfully processed nested URLs
+                                }
+                                Err(e) => {
+                                    debug!("Failed to process nested URLs from '{}': {}", dezoomer.name(), e);
+                                    // Continue trying other dezoomers
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Dezoomer '{}' failed for URL '{}': {}", dezoomer.name(), url.url, e);
+                        // Continue trying other dezoomers
+                    }
+                }
+            }
+            
+            if !found_images {
+                error!("No dezoomer could process URL: {}", url.url);
+            }
+        }
+        
+        if all_images.is_empty() {
+            Err(ZoomError::NoLevels)
+        } else {
+            Ok(all_images)
+        }
+    })
+}
+
+/// Process an input URI to extract zoomable images, handling both direct images and URL lists
+async fn get_images_from_uri(
+    args: &Arguments,
+    http: &Client,
+    uri: &str,
+) -> Result<Vec<Box<dyn ZoomableImage>>, ZoomError> {
+    let mut dezoomer = args.find_dezoomer()?;
+    
+    match get_dezoomer_result(dezoomer.as_mut(), http, uri).await? {
+        DezoomerResult::Images(images) => {
+            debug!("Found {} direct images", images.len());
+            Ok(images)
+        }
+        DezoomerResult::ImageUrls(urls) => {
+            debug!("Found {} URLs to process", urls.len());
+            process_image_urls(urls, http).await
         }
     }
 }
