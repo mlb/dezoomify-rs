@@ -134,6 +134,8 @@ pub struct Arguments {
     /// In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied.
     #[arg(long = "bulk")]
     pub bulk: Option<String>,
+
+
 }
 
 impl Default for Arguments {

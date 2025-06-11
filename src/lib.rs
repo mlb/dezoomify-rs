@@ -12,13 +12,15 @@ use reqwest::Client;
 pub use arguments::Arguments;
 pub use binary_display::{BinaryDisplay, display_bytes};
 use dezoomer::TileReference;
-use dezoomer::{Dezoomer, DezoomerError, DezoomerInput, ZoomLevels};
+use dezoomer::{Dezoomer, DezoomerError, DezoomerInput};
 use dezoomer::{ZoomLevel, ZoomLevelIter};
 pub use errors::ZoomError;
 use network::{client, fetch_uri};
 use output_file::get_outname;
 use tile::Tile;
 pub use vec2d::Vec2d;
+
+
 
 use crate::dezoomer::{PageContents, DezoomerResult, ZoomableImage, ZoomableImageUrl};
 use crate::encoder::tile_buffer::TileBuffer;
@@ -27,7 +29,7 @@ use crate::output_file::reserve_output_file;
 
 mod arguments;
 mod binary_display;
-pub mod bulk;
+
 pub mod dezoomer;
 pub(crate) mod download_state;
 mod encoder;
@@ -62,28 +64,7 @@ fn stdin_line() -> Result<String, ZoomError> {
     Ok(first_line?)
 }
 
-async fn list_tiles(
-    dezoomer: &mut dyn Dezoomer,
-    http: &Client,
-    uri: &str,
-) -> Result<ZoomLevels, ZoomError> {
-    let mut i = DezoomerInput {
-        uri: String::from(uri),
-        contents: PageContents::Unknown,
-    };
-    loop {
-        match dezoomer.zoom_levels(&i) {
-            Ok(levels) => return Ok(levels),
-            Err(DezoomerError::NeedsData { uri }) => {
-                let contents = fetch_uri(&uri, http).await.into();
-                debug!("Response for metadata file '{}': {:?}", uri, &contents);
-                i.uri = uri;
-                i.contents = contents;
-            }
-            Err(e) => return Err(e.into()),
-        }
-    }
-}
+
 
 /// Process a single dezoomer to get a result, handling the NeedsData loop
 async fn get_dezoomer_result(
@@ -369,6 +350,179 @@ pub async fn dezoomify(args: &Arguments) -> Result<PathBuf, ZoomError> {
     info!("Dezooming {}", zoom_level.name());
     dezoomify_level(args, zoom_level, tile_buffer).await?;
     Ok(save_as)
+}
+
+/// Statistics for bulk processing
+#[derive(Debug, Default)]
+pub struct BulkStats {
+    pub total_images: usize,
+    pub successful_images: usize,
+    pub failed_images: usize,
+    pub partial_downloads: usize,
+}
+
+impl BulkStats {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn record_success(&mut self) {
+        self.successful_images += 1;
+    }
+
+    fn record_partial(&mut self) {
+        self.partial_downloads += 1;
+    }
+
+    fn record_failure(&mut self) {
+        self.failed_images += 1;
+    }
+
+    fn set_total(&mut self, total: usize) {
+        self.total_images = total;
+    }
+}
+
+/// Process multiple images in bulk mode using the new unified architecture
+pub async fn process_bulk(args: &Arguments) -> Result<BulkStats, ZoomError> {
+    use log::{debug, trace, warn};
+    
+    debug!("Starting bulk processing mode");
+    trace!("Bulk processing arguments: {:?}", args);
+    
+    // Get the bulk file/URI from arguments
+    let bulk_uri = args.bulk.as_ref()
+        .ok_or_else(|| ZoomError::NoBulkUrl { 
+            bulk_file_path: "No bulk source specified".to_string() 
+        })?;
+    
+    debug!("Bulk source: {}", bulk_uri);
+    
+    // Get all images from the bulk source using unified pipeline
+    let http = client(std::iter::empty(), args, None)?;
+    let images = get_images_from_uri(args, &http, bulk_uri).await?;
+    
+    let mut stats = BulkStats::new();
+    stats.set_total(images.len());
+    
+    info!("Found {} images to process in bulk mode", images.len());
+    debug!("Images discovered: {:?}", images.iter().map(|img| img.title().unwrap_or_else(|| "Untitled".to_string())).collect::<Vec<_>>());
+    
+    let base_dir = current_dir()?;
+    
+    // Process each image individually
+    for (index, image) in images.into_iter().enumerate() {
+        let image_title = image.title().unwrap_or_else(|| format!("Image_{}", index + 1));
+        info!("Processing image {}/{}: {}", index + 1, stats.total_images, image_title);
+        trace!("Processing image: {:?}", image);
+        
+        // Generate unique output filename for this image
+        let output_path = if let Some(ref base_outfile) = args.outfile {
+            generate_bulk_output_name(base_outfile, index)
+        } else {
+            let mut path = base_dir.clone();
+            path.push(format!("dezoomified_{}.jpg", index + 1));
+            path
+        };
+        
+        debug!("Output path for image {}: {:?}", index + 1, output_path);
+        
+        // Get zoom levels from the image
+        let zoom_levels = match image.into_zoom_levels() {
+            Ok(levels) => levels,
+            Err(e) => {
+                warn!("Failed to get zoom levels for image {}: {}", index + 1, e);
+                stats.record_failure();
+                continue;
+            }
+        };
+        
+        trace!("Zoom levels for image {}: {} levels available", index + 1, zoom_levels.len());
+        
+        // Choose the appropriate zoom level using existing logic
+        let zoom_level = match choose_level(zoom_levels, args) {
+            Ok(level) => level,
+            Err(e) => {
+                warn!("Failed to choose zoom level for image {}: {}", index + 1, e);
+                stats.record_failure();
+                continue;
+            }
+        };
+        
+        debug!("Selected zoom level for image {}: {} ({}x{})", 
+               index + 1, zoom_level.name(), 
+               zoom_level.size_hint().map(|s| s.x).unwrap_or(0),
+               zoom_level.size_hint().map(|s| s.y).unwrap_or(0));
+        
+        // Prepare output file
+        let save_as = match prepare_output_path(&Some(output_path), &zoom_level.title(), &base_dir, zoom_level.size_hint()) {
+            Ok(path) => path,
+            Err(e) => {
+                warn!("Failed to prepare output path for image {}: {}", index + 1, e);
+                stats.record_failure();
+                continue;
+            }
+        };
+        
+        let tile_buffer = match create_tile_buffer(save_as.clone(), args.compression).await {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                warn!("Failed to create tile buffer for image {}: {}", index + 1, e);
+                stats.record_failure();
+                continue;
+            }
+        };
+        
+        // Process the image
+        info!("Downloading image {}: {}", index + 1, zoom_level.name());
+        match dezoomify_level(args, zoom_level, tile_buffer).await {
+            Ok(()) => {
+                info!("Successfully saved image {} to {}", index + 1, save_as.display());
+                stats.record_success();
+            },
+            Err(ZoomError::PartialDownload { successful_tiles, total_tiles, .. }) => {
+                warn!("Image {} completed with partial download: {}/{} tiles", index + 1, successful_tiles, total_tiles);
+                stats.record_partial();
+            },
+            Err(e) => {
+                warn!("Failed to process image {}: {}", index + 1, e);
+                stats.record_failure();
+            }
+        }
+    }
+    
+    // Log final statistics
+    info!("Bulk processing complete!");
+    info!("Total images: {}", stats.total_images);
+    info!("Successfully downloaded: {}", stats.successful_images);
+    info!("Partial downloads: {}", stats.partial_downloads);
+    info!("Failed downloads: {}", stats.failed_images);
+    
+    debug!("Final bulk processing stats: {:?}", stats);
+    
+    Ok(stats)
+}
+
+/// Generate a unique output filename for bulk processing
+fn generate_bulk_output_name(base_outfile: &Path, index: usize) -> PathBuf {
+    let mut result = base_outfile.to_path_buf();
+    
+    if let Some(stem) = base_outfile.file_stem() {
+        if let Some(extension) = base_outfile.extension() {
+            let new_name = format!("{}_{}.{}", 
+                                   stem.to_string_lossy(), 
+                                   index + 1, 
+                                   extension.to_string_lossy());
+            result.set_file_name(new_name);
+        } else {
+            let new_name = format!("{}_{}", stem.to_string_lossy(), index + 1);
+            result.set_file_name(new_name);
+        }
+    } else {
+        result.set_file_name(format!("dezoomified_{}.jpg", index + 1));
+    }
+    
+    result
 }
 
 /// Validates the download success based on the final state.

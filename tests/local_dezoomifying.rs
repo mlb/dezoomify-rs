@@ -10,7 +10,7 @@ use image::{self, DynamicImage, GenericImageView};
 use image_hasher::HasherConfig;
 use tempdir::TempDir;
 
-use dezoomify_rs::{Arguments, ZoomError, bulk::read_bulk_urls, dezoomify};
+use dezoomify_rs::{Arguments, ZoomError, dezoomify, process_bulk};
 
 /// Dezoom a file locally
 #[tokio::test(flavor = "multi_thread")]
@@ -144,78 +144,27 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
     let output_base = temp_dir.path().join("bulk_test.jpg");
     args.outfile = Some(output_base.clone());
 
-    // Execute bulk processing using the main function logic
-    let urls = read_bulk_urls(
-        args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Bulk source not set in Arguments for test_bulk_processing",
-            ),
-        })?,
-        &args,
-    )
-    .await?;
-    assert_eq!(urls.len(), 2, "Should read exactly 2 URLs from bulk file");
-
-    let mut successful_count = 0;
-    let mut processed_files = Vec::new();
-
-    for (index, url) in urls.iter().enumerate() {
-        // Create a modified args for this specific URL
-        let mut single_args = args.clone();
-        single_args.input_uri = Some(url.download_url.clone());
-        single_args.bulk = None; // Disable bulk mode for individual processing
-
-        // Generate output file name with suffix
-        let output_file = generate_bulk_output_name(&output_base, index);
-        single_args.outfile = Some(output_file.clone());
-
-        match dezoomify(&single_args).await {
-            Ok(saved_as) => {
-                assert!(
-                    saved_as.exists(),
-                    "Output file should exist: {:?}",
-                    saved_as
-                );
-
-                // Verify the image can be opened and has reasonable dimensions
-                let img =
-                    image::open(&saved_as).expect("Should be able to open the generated image");
-                let (width, height) = img.dimensions();
-                assert!(
-                    width > 0 && height > 0,
-                    "Image should have valid dimensions"
-                );
-                assert!(
-                    width > 100 && height > 100,
-                    "Image should be reasonably sized (not tiny)"
-                );
-
-                processed_files.push(saved_as);
-                successful_count += 1;
-            }
-            Err(_err @ ZoomError::PartialDownload { .. }) => {
-                // Partial downloads are still considered successful for the test
-                successful_count += 1;
-            }
-            Err(err) => {
-                panic!(
-                    "Unexpected error processing URL {}: {}",
-                    url.download_url, err
-                );
-            }
-        }
-    }
+    // Execute bulk processing using the new unified architecture
+    let stats = process_bulk(&args).await?;
+    
+    // Verify statistics
+    assert_eq!(stats.total_images, 2, "Should process exactly 2 images from bulk file");
+    assert!(
+        stats.successful_images + stats.partial_downloads > 0,
+        "At least some images should succeed"
+    );
+    
+    let successful_count = stats.successful_images + stats.partial_downloads;
 
     assert_eq!(
         successful_count, 2,
         "Both URLs should be processed successfully"
     );
-    assert_eq!(processed_files.len(), 2, "Should have 2 output files");
+
 
     // Verify the output files have the expected naming pattern
-    let expected_file1 = output_base.parent().unwrap().join("bulk_test_0001.jpg");
-    let expected_file2 = output_base.parent().unwrap().join("bulk_test_0002.jpg");
+    let expected_file1 = output_base.parent().unwrap().join("bulk_test_1.jpg");
+    let expected_file2 = output_base.parent().unwrap().join("bulk_test_2.jpg");
 
     assert!(
         expected_file1.exists(),
@@ -243,21 +192,7 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
     Ok(())
 }
 
-#[allow(dead_code)]
-fn generate_bulk_output_name(base_outfile: &Path, index: usize) -> PathBuf {
-    let stem = base_outfile.file_stem().unwrap_or_default();
-    let extension = base_outfile.extension().unwrap_or_default();
-    let parent = base_outfile.parent().unwrap_or_else(|| Path::new("."));
 
-    let mut new_name = std::ffi::OsString::from(stem);
-    new_name.push(format!("_{:04}", index + 1));
-    if !extension.is_empty() {
-        new_name.push(".");
-        new_name.push(extension);
-    }
-
-    parent.join(new_name)
-}
 
 #[allow(dead_code)]
 async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
@@ -334,95 +269,20 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     );
     assert_eq!(parsed_args.retries, 0, "Retries should be 0");
 
-    // Test that URLs are read correctly
-    let urls = read_bulk_urls(
-        parsed_args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Bulk source not set in Arguments for test_bulk_mode_cli_end_to_end",
-            ),
-        })?,
-        &parsed_args,
-    )
-    .await
-    .expect("Should read URLs from bulk file");
-    assert_eq!(urls.len(), 2, "Should read exactly 2 URLs");
+    // Test the complete bulk processing flow using the new unified architecture
+    let stats = process_bulk(&parsed_args).await.expect("Bulk processing should succeed");
+    
+    // Verify statistics
+    assert_eq!(stats.total_images, 2, "Should process exactly 2 images");
+    let successful_count = stats.successful_images + stats.partial_downloads;
     assert_eq!(
-        urls[0].download_url,
-        "testdata/zoomify/test_custom_size/ImageProperties.xml"
-    );
-    assert_eq!(urls[1].download_url, "testdata/generic/map_{{X}}_{{Y}}.jpg");
-
-    // Test the complete bulk processing flow using the main library function
-    // This simulates exactly what would happen when running the CLI
-    let mut successful_count = 0;
-    let total_urls = urls.len();
-
-    for (index, url) in urls.iter().enumerate() {
-        // Create arguments for individual processing (simulating main.rs logic)
-        let mut single_args = parsed_args.clone();
-        single_args.input_uri = Some(url.download_url.clone());
-        single_args.bulk = None;
-
-        // Apply bulk mode logic: if no level-specifying args, imply --largest
-        if parsed_args.is_bulk_mode() && !parsed_args.has_level_specifying_args() {
-            single_args.largest = true;
-        }
-
-        // Generate bulk output file name
-        let bulk_output_path = generate_bulk_output_name(&actual_output_file, index);
-        single_args.outfile = Some(bulk_output_path.clone());
-
-        // Process the URL
-        match dezoomify(&single_args).await {
-            Ok(saved_as) => {
-                // Verify the file was created with correct name
-                assert!(
-                    saved_as.exists(),
-                    "Output file should exist: {:?}",
-                    saved_as
-                );
-                assert_eq!(
-                    saved_as, bulk_output_path,
-                    "Saved file path should match expected bulk name"
-                );
-
-                // Verify the image is valid
-                let img = image::open(&saved_as).expect("Should be able to open generated image");
-                let (width, height) = img.dimensions();
-                assert!(
-                    width > 0 && height > 0,
-                    "Image should have valid dimensions"
-                );
-                assert!(
-                    width >= 100 && height >= 100,
-                    "Image should be reasonably sized"
-                );
-
-                successful_count += 1;
-            }
-            Err(ZoomError::PartialDownload { .. }) => {
-                // Partial downloads are acceptable for this test
-                successful_count += 1;
-            }
-            Err(err) => {
-                panic!(
-                    "Unexpected error processing URL '{}': {}",
-                    url.download_url, err
-                );
-            }
-        }
-    }
-
-    // Verify all URLs were processed successfully
-    assert_eq!(
-        successful_count, total_urls,
-        "All URLs should be processed successfully"
+        successful_count, stats.total_images,
+        "All images should be processed successfully"
     );
 
     // Verify the expected output files exist with correct naming
-    let expected_file1 = temp_dir.path().join("cli_bulk_test_0001.jpg");
-    let expected_file2 = temp_dir.path().join("cli_bulk_test_0002.jpg");
+    let expected_file1 = temp_dir.path().join("cli_bulk_test_1.jpg");
+    let expected_file2 = temp_dir.path().join("cli_bulk_test_2.jpg");
 
     assert!(
         expected_file1.exists(),

@@ -1,6 +1,6 @@
 use log::debug;
 
-use crate::dezoomer::{Dezoomer, DezoomerError, DezoomerInput, ZoomLevel, ZoomLevels};
+use crate::dezoomer::{Dezoomer, DezoomerError, DezoomerInput, DezoomerResult, ZoomLevel, ZoomLevels};
 use crate::errors::DezoomerError::NeedsData;
 
 pub fn all_dezoomers(include_generic: bool) -> Vec<Box<dyn Dezoomer>> {
@@ -88,6 +88,44 @@ impl Dezoomer for AutoDezoomer {
         } else {
             let successes = std::mem::take(&mut self.successes);
             Ok(successes)
+        }
+    }
+
+    fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
+        // TO DO: Use drain_filter when it is stabilized
+        let mut i = 0;
+        while i != self.dezoomers.len() {
+            let dezoomer = &mut self.dezoomers[i];
+            let keep = match dezoomer.dezoomer_result(data) {
+                Ok(result) => {
+                    debug!("dezoomer '{}' successfully processed the input", dezoomer.name());
+                    return Ok(result);
+                }
+                Err(DezoomerError::NeedsData { uri }) => {
+                    debug!("dezoomer '{}' requested to load {}", dezoomer.name(), &uri);
+                    if !self.needs_uris.contains(&uri) {
+                        self.needs_uris.push(uri);
+                    }
+                    true
+                }
+                Err(e) => {
+                    debug!("{} cannot process this image: {}", dezoomer.name(), e);
+                    self.errors.push((dezoomer.name(), e));
+                    false
+                }
+            };
+            if keep {
+                i += 1
+            } else {
+                self.dezoomers.remove(i);
+            }
+        }
+        if let Some(uri) = self.needs_uris.pop() {
+            Err(NeedsData { uri })
+        } else {
+            debug!("No dezoomer can process {:?}", data.uri);
+            let errs = std::mem::take(&mut self.errors);
+            Err(DezoomerError::wrap(AutoDezoomerError(errs)))
         }
     }
 }

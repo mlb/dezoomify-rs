@@ -331,7 +331,7 @@ fn test_flat_multires() {
 
 #[test]
 fn test_dezoomer_result_single_image() {
-    let mut dezoomer = KrpanoDezoomer::default();
+    let mut dezoomer = KrpanoDezoomer;
     let data = r#"<krpano>
         <image>
             <flat url="level=%l x=%0x y=%0y" multires="1,2x3,3x4x3"/>
@@ -355,7 +355,7 @@ fn test_dezoomer_result_single_image() {
 
 #[test]
 fn test_dezoomer_result_cube_faces() {
-    let mut dezoomer = KrpanoDezoomer::default();
+    let mut dezoomer = KrpanoDezoomer;
     let data = r#"<krpano showerrors="false" logkey="false">
         <image type="cube" multires="true" tilesize="512" progressive="false" multiresthreshold="-0.3">
             <level download="view" decode="view" tiledimagewidth="1000" tiledimageheight="100">
@@ -381,7 +381,7 @@ fn test_dezoomer_result_cube_faces() {
 
 #[test]
 fn test_dezoomer_result_multiple_scenes() {
-    let mut dezoomer = KrpanoDezoomer::default();
+    let mut dezoomer = KrpanoDezoomer;
     let data = std::fs::read("testdata/krpano/krpano_scenes.xml").unwrap();
     
     let input = DezoomerInput {

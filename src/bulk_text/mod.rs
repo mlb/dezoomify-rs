@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_dezoomer_result() {
-        let mut dezoomer = BulkTextDezoomer::default();
+        let mut dezoomer = BulkTextDezoomer;
         let content = "http://example.com/image1.jpg\nhttps://example.org/manifest.json".as_bytes();
         
         let input = DezoomerInput {
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_dezoomer_result_empty_file() {
-        let mut dezoomer = BulkTextDezoomer::default();
+        let mut dezoomer = BulkTextDezoomer;
         let content = "# Only comments\n\n# Nothing else".as_bytes();
         
         let input = DezoomerInput {
