@@ -322,17 +322,23 @@ dezoomify-rs supports bulk processing of multiple URLs using the `--bulk` option
 
 #### Option 1: Text file with URLs
 
-Create a text file containing one URL per line:
+Create a text file containing one URL per line, optionally followed by a custom title:
 
 ```
 # urls.txt - Lines starting with # are comments and will be ignored
-https://example.com/image1/ImageProperties.xml
-https://example.com/image2/info.json
+https://example.com/image1/ImageProperties.xml My First Image
+https://example.com/image2/info.json Custom Title for Second Image
 https://example.com/image3.dzi
 
 # You can also include local file paths
-/path/to/local/tiles.yaml
+/path/to/local/tiles.yaml Local Manuscript
 ```
+
+The format for each line is: `URL [custom title]`
+- The URL is required and must be valid
+- The custom title is optional - if not provided, a title will be generated from the URL
+- Everything after the first space following the URL is treated as the title
+- Empty lines and lines starting with # are ignored as comments
 
 Then run dezoomify-rs with the `--bulk` option:
 

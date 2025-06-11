@@ -214,7 +214,7 @@ pub trait Dezoomer {
     fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
         let levels = self.zoom_levels(data)?;
         let image = SimpleZoomableImage::new(levels, None);
-        Ok(vec![ZoomableImage::Image(Box::new(image))])
+        Ok(dezoomer_result_from_single_image(image))
     }
 
     fn assert(&self, c: bool) -> Result<(), DezoomerError> {

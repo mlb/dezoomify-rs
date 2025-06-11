@@ -94,7 +94,6 @@ async fn get_images_from_uri(
 ) -> Result<Vec<ZoomableImage>, ZoomError> {
     let mut dezoomer = args.find_dezoomer()?;
     let zoomable_images = get_dezoomer_result(dezoomer.as_mut(), http, uri).await?;
-    debug!("Found {} zoomable images", zoomable_images.len());
     Ok(zoomable_images)
 }
 
