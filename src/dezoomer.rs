@@ -59,7 +59,7 @@ impl DezoomerInput {
 }
 
 /// A single image with a given width and height
-pub type ZoomLevel = Box<dyn TileProvider + Sync>;
+pub type ZoomLevel = Box<dyn TileProvider + Send + Sync>;
 
 /// A collection of multiple resolutions at which an image is available
 pub type ZoomLevels = Vec<ZoomLevel>;
@@ -89,6 +89,35 @@ pub enum DezoomerResult {
     ImageUrls(Vec<ZoomableImageUrl>),
 }
 
+#[derive(Debug)]
+pub struct SimpleZoomableImage {
+    zoom_levels: Option<ZoomLevels>,
+    title: Option<String>,
+}
+
+impl SimpleZoomableImage {
+    pub fn new(zoom_levels: ZoomLevels, title: Option<String>) -> Self {
+        SimpleZoomableImage { 
+            zoom_levels: Some(zoom_levels), 
+            title 
+        }
+    }
+}
+
+impl ZoomableImage for SimpleZoomableImage {
+    fn zoom_levels(&self) -> Result<ZoomLevels, DezoomerError> {
+        // For now, return an error if already consumed.
+        // In the future, we might want to change the trait to take &mut self
+        Err(DezoomerError::DownloadError { 
+            msg: "SimpleZoomableImage zoom levels cannot be retrieved multiple times".to_string() 
+        })
+    }
+    
+    fn title(&self) -> Option<String> {
+        self.title.clone()
+    }
+}
+
 pub trait IntoZoomLevels {
     fn into_zoom_levels(self) -> ZoomLevels;
 }
@@ -96,7 +125,7 @@ pub trait IntoZoomLevels {
 impl<I, Z> IntoZoomLevels for I
 where
     I: Iterator<Item = Z>,
-    Z: TileProvider + Sync + 'static,
+    Z: TileProvider + Send + Sync + 'static,
 {
     fn into_zoom_levels(self) -> ZoomLevels {
         self.map(|x| Box::new(x) as ZoomLevel).collect()
@@ -211,7 +240,7 @@ impl<'a> ZoomLevelIter<'a> {
 }
 
 /// Shortcut to return a single zoom level from a dezoomer
-pub fn single_level<T: TileProvider + Sync + 'static>(
+pub fn single_level<T: TileProvider + Send + Sync + 'static>(
     level: T,
 ) -> Result<ZoomLevels, DezoomerError> {
     Ok(vec![Box::new(level)])
@@ -376,5 +405,23 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn test_simple_zoomable_image() {
+        let zoom_levels: ZoomLevels = vec![Box::new(FakeLvl {})];
+        let title = Some("Test Image".to_string());
+        
+        let image = SimpleZoomableImage::new(zoom_levels, title.clone());
+        
+        // Test title retrieval
+        assert_eq!(image.title(), title);
+        
+        // Test that zoom_levels returns an error (as currently implemented)
+        assert!(image.zoom_levels().is_err());
+        
+        // Test that the image can be used as a ZoomableImage trait object
+        let boxed_image: Box<dyn ZoomableImage> = Box::new(image);
+        assert_eq!(boxed_image.title(), title);
     }
 }
