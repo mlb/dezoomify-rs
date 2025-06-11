@@ -132,13 +132,13 @@ pub trait Dezoomer {
 
 **Remarks:** Successfully added dezoomer_result method with backward compatibility. All 138 tests pass, confirming that all existing dezoomers work correctly with the new default implementation. Committed as 24756e8.
 
-### Step 4: Transform IIIF Dezoomer
+### Step 4: Transform IIIF Dezoomer ✅ DONE
 **Files to modify:** `src/iiif/mod.rs`
 
 **Tasks:**
-1. Create `IIIFZoomableImage` struct that wraps IIIF-specific zoom levels
-2. Modify IIIF dezoomer to implement `dezoomer_result` method
-3. Remove `zoom_levels` implementation (use trait default)
+1. ✅ Create `IIIFZoomableImage` struct that wraps IIIF-specific zoom levels
+2. ✅ Modify IIIF dezoomer to implement `dezoomer_result` method
+3. ✅ Smart detection: manifests return `ImageUrls`, info.json returns `Images`
 
 ```rust
 #[derive(Debug)]
@@ -149,20 +149,38 @@ pub struct IIIFZoomableImage {
 
 impl Dezoomer for IIIF {
     fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
-        let levels = zoom_levels(data.with_contents()?.uri, data.with_contents()?.contents)?;
-        let image = IIIFZoomableImage {
-            zoom_levels: levels,
-            title: None, // Could extract from IIIF metadata later
-        };
-        Ok(DezoomerResult::Images(vec![Box::new(image)]))
+        // Try manifest first, then fallback to info.json
+        match parse_iiif_manifest_from_bytes(contents, uri) {
+            Ok(image_infos) if !image_infos.is_empty() => {
+                let image_urls: Vec<ZoomableImageUrl> = image_infos
+                    .into_iter()
+                    .map(|image_info| {
+                        let title = determine_title(&image_info);
+                        ZoomableImageUrl { url: image_info.image_uri, title }
+                    })
+                    .collect();
+                Ok(DezoomerResult::ImageUrls(image_urls))
+            }
+            _ => {
+                match zoom_levels(uri, contents) {
+                    Ok(levels) => {
+                        let image = IIIFZoomableImage::new(levels, None);
+                        Ok(DezoomerResult::Images(vec![Box::new(image)]))
+                    }
+                    Err(e) => Err(e.into())
+                }
+            }
+        }
     }
 }
 ```
 
 **Tests to run:**
-- `cargo clippy` - should pass
-- `cargo test` - IIIF tests should pass
-- Test that IIIF dezoomer returns `DezoomerResult::Images`
+- ✅ `cargo clippy` - should pass
+- ✅ `cargo test` - IIIF tests should pass
+- ✅ Test that IIIF dezoomer returns `DezoomerResult::ImageUrls` for manifests and `DezoomerResult::Images` for info.json
+
+**Remarks:** Successfully implemented IIIF dezoomer transformation with intelligent detection between manifests and info.json files. Manifests return URLs for recursive processing, while info.json files return direct images. Added comprehensive tests. All 140 tests pass. Committed as edb1d81.
 
 ### Step 5: Transform Krpano Dezoomer
 **Files to modify:** `src/krpano/mod.rs`
