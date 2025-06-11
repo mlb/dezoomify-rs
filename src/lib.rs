@@ -599,13 +599,18 @@ async fn process_bulk_images(
             let base_path = generate_bulk_output_name(base_outfile, index);
             get_outname(
                 &Some(base_path),
-                &zoom_level.title(),
+                &zoom_level.title().or_else(|| Some(image_title.clone())),
                 base_dir,
                 zoom_level.size_hint(),
             )
         } else {
-            // Use the image title and let get_outname handle collisions
-            get_outname(&None, &zoom_level.title(), base_dir, zoom_level.size_hint())
+            // Use the zoom level title if present, fallback to image title
+            get_outname(
+                &None,
+                &zoom_level.title().or_else(|| Some(image_title.clone())),
+                base_dir,
+                zoom_level.size_hint(),
+            )
         };
 
         // Reserve the output file to avoid collisions
@@ -793,13 +798,18 @@ async fn process_bulk_urls(
             let base_path = generate_bulk_output_name(base_outfile, index);
             get_outname(
                 &Some(base_path),
-                &zoom_level.title(),
+                &zoom_level.title().or_else(|| Some(image_title.clone())),
                 base_dir,
                 zoom_level.size_hint(),
             )
         } else {
-            // Use the image title and let get_outname handle collisions
-            get_outname(&None, &zoom_level.title(), base_dir, zoom_level.size_hint())
+            // Use the zoom level title if present, fallback to image title
+            get_outname(
+                &None,
+                &zoom_level.title().or_else(|| Some(image_title.clone())),
+                base_dir,
+                zoom_level.size_hint(),
+            )
         };
 
         // Reserve the output file to avoid collisions

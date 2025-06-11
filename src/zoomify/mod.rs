@@ -81,6 +81,20 @@ impl TilesRect for ZoomifyLevel {
             z = self.level
         )
     }
+
+    fn title(&self) -> Option<String> {
+        // Extract a meaningful title from the base URL
+        // For Zoomify, URLs typically end with the image name before "/ImageProperties.xml"
+        // e.g., "https://example.com/images/myimage/ImageProperties.xml" -> "myimage"
+        let url_with_trailing_slash = format!("{}/", self.base_url);
+        let path = url_with_trailing_slash
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .last()
+            .unwrap_or("zoomify_image");
+
+        Some(path.to_string())
+    }
 }
 
 impl std::fmt::Debug for ZoomifyLevel {
@@ -124,4 +138,40 @@ fn test_tilegroups() {
     let tiles: HashSet<String> = level.next_tiles(None).into_iter().map(|t| t.url).collect();
     assert!(tiles.contains("http://x.fr/y/TileGroup1/5-0-14.jpg"));
     assert!(tiles.contains("http://x.fr/y/TileGroup2/5-0-15.jpg"));
+}
+
+#[test]
+fn test_title_extraction() {
+    let url = "http://example.com/images/manuscript123/ImageProperties.xml";
+    let contents = br#"<IMAGE_PROPERTIES WIDTH="1000" HEIGHT="1000"
+                                NUMTILES="25" NUMIMAGES="1" VERSION="1.8" TILESIZE="256"/>"#;
+    let mut props = load_from_properties(url, contents).unwrap();
+    let level = &mut props[0];
+
+    // Test that the title is extracted from the URL path
+    assert_eq!(level.title(), Some("manuscript123".to_string()));
+}
+
+#[test]
+fn test_title_extraction_with_query_params() {
+    let url = "https://library.example.edu/viewer/book_of_kells/ImageProperties.xml?cache=false";
+    let contents = br#"<IMAGE_PROPERTIES WIDTH="2000" HEIGHT="3000"
+                                NUMTILES="100" NUMIMAGES="1" VERSION="1.8" TILESIZE="256"/>"#;
+    let mut props = load_from_properties(url, contents).unwrap();
+    let level = &mut props[0];
+
+    // Test that the title ignores query parameters
+    assert_eq!(level.title(), Some("book_of_kells".to_string()));
+}
+
+#[test]
+fn test_title_extraction_simple_path() {
+    let url = "http://example.com/ImageProperties.xml";
+    let contents = br#"<IMAGE_PROPERTIES WIDTH="500" HEIGHT="500"
+                                NUMTILES="9" NUMIMAGES="1" VERSION="1.8" TILESIZE="256"/>"#;
+    let mut props = load_from_properties(url, contents).unwrap();
+    let level = &mut props[0];
+
+    // Test fallback when no meaningful path is found
+    assert_eq!(level.title(), Some("example.com".to_string()));
 }

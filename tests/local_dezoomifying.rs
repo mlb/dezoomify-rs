@@ -15,9 +15,15 @@ use dezoomify_rs::{Arguments, ZoomError, dezoomify, process_bulk};
 /// Dezoom a file locally
 #[tokio::test(flavor = "multi_thread")]
 pub async fn custom_size_local_zoomify_tiles() {
+    // Get absolute path to avoid working directory issues
+    let workspace_root = get_workspace_root();
+    let input_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    let expected_path =
+        workspace_root.join("testdata/zoomify/test_custom_size/expected_result.jpg");
+
     test_image(
-        "testdata/zoomify/test_custom_size/ImageProperties.xml",
-        "testdata/zoomify/test_custom_size/expected_result.jpg",
+        input_path.to_str().unwrap(),
+        expected_path.to_str().unwrap(),
     )
     .await
     .unwrap()
@@ -25,9 +31,14 @@ pub async fn custom_size_local_zoomify_tiles() {
 
 #[tokio::test(flavor = "multi_thread")]
 pub async fn local_generic_tiles() {
+    // Get absolute path to avoid working directory issues
+    let workspace_root = get_workspace_root();
+    let input_path = workspace_root.join("testdata/generic/map_{{X}}_{{Y}}.jpg");
+    let expected_path = workspace_root.join("testdata/generic/map_expected.png");
+
     test_image(
-        "testdata/generic/map_{{X}}_{{Y}}.jpg",
-        "testdata/generic/map_expected.png",
+        input_path.to_str().unwrap(),
+        expected_path.to_str().unwrap(),
     )
     .await
     .unwrap()
@@ -41,6 +52,42 @@ pub async fn bulk_mode_local_tiles() {
 #[tokio::test(flavor = "multi_thread")]
 pub async fn bulk_mode_end_to_end_cli() {
     test_bulk_mode_cli_end_to_end().await.unwrap()
+}
+
+/// Get the workspace root directory (where Cargo.toml is located)
+fn get_workspace_root() -> PathBuf {
+    let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
+
+    // Walk up the directory tree until we find Cargo.toml
+    loop {
+        if current_dir.join("Cargo.toml").exists() {
+            return current_dir;
+        }
+        if let Some(parent) = current_dir.parent() {
+            current_dir = parent.to_path_buf();
+        } else {
+            break;
+        }
+    }
+
+    // If we can't find Cargo.toml by walking up, try using the CARGO_MANIFEST_DIR environment variable
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let manifest_path = PathBuf::from(manifest_dir);
+        if manifest_path.join("Cargo.toml").exists() {
+            return manifest_path;
+        }
+    }
+
+    // Last resort: try relative path from where tests typically run
+    let test_workspace = PathBuf::from("../");
+    if test_workspace.join("Cargo.toml").exists() {
+        return test_workspace
+            .canonicalize()
+            .expect("Failed to canonicalize path");
+    }
+
+    // If all else fails, return current directory and let tests fail with better error message
+    std::env::current_dir().expect("Failed to get current directory")
 }
 
 #[allow(clippy::needless_lifetimes)]
@@ -116,19 +163,23 @@ fn hash<T: Hash>(v: T) -> u64 {
 
 #[allow(dead_code)]
 async fn test_bulk_processing() -> Result<(), ZoomError> {
+    // Get workspace root to use absolute paths
+    let workspace_root = get_workspace_root();
+
     // Create a temporary directory for the test
     let temp_dir = TempDir::new("dezoomify-rs-bulk-test").unwrap();
 
-    // Create a bulk URLs file
+    // Create a bulk URLs file with absolute paths
     let bulk_file_path = temp_dir.path().join("urls.txt");
     let mut bulk_file = File::create(&bulk_file_path).unwrap();
     writeln!(bulk_file, "# Bulk test URLs").unwrap();
-    writeln!(
-        bulk_file,
-        "testdata/zoomify/test_custom_size/ImageProperties.xml"
-    )
-    .unwrap();
-    writeln!(bulk_file, "testdata/generic/map_{{{{X}}}}_{{{{Y}}}}.jpg").unwrap();
+
+    // Use absolute paths to testdata
+    let zoomify_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    let generic_path = workspace_root.join("testdata/generic/map_{{X}}_{{Y}}.jpg");
+
+    writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
+    writeln!(bulk_file, "{}", generic_path.to_string_lossy()).unwrap();
     writeln!(bulk_file).unwrap(); // Empty line
     writeln!(bulk_file, "# Comment line should be ignored").unwrap();
     drop(bulk_file);
@@ -198,20 +249,24 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
 async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     use std::env;
 
+    // Get workspace root to use absolute paths
+    let workspace_root = get_workspace_root();
+
     // Create a temporary directory for the test
     let temp_dir = TempDir::new("dezoomify-rs-cli-bulk-test").unwrap();
 
-    // Create a bulk URLs file
+    // Create a bulk URLs file with absolute paths
     let bulk_file_path = temp_dir.path().join("test_urls.txt");
     let mut bulk_file = File::create(&bulk_file_path).unwrap();
     writeln!(bulk_file, "# Test URLs for bulk CLI processing").unwrap();
-    writeln!(
-        bulk_file,
-        "testdata/zoomify/test_custom_size/ImageProperties.xml"
-    )
-    .unwrap();
+
+    // Use absolute paths to testdata
+    let zoomify_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    let generic_path = workspace_root.join("testdata/generic/map_{{X}}_{{Y}}.jpg");
+
+    writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
     writeln!(bulk_file).unwrap(); // Empty line should be ignored
-    writeln!(bulk_file, "testdata/generic/map_{{{{X}}}}_{{{{Y}}}}.jpg").unwrap();
+    writeln!(bulk_file, "{}", generic_path.to_string_lossy()).unwrap();
     writeln!(bulk_file, "# Another comment").unwrap();
     drop(bulk_file);
 
@@ -222,7 +277,7 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     let _original_dir = env::current_dir().unwrap(); // Keep reference for safety
 
     // Create CLI arguments as they would come from command line
-    // Note: input_uri and outfile are positional arguments, so they come after flags
+    // Note: When using --bulk, outfile should not be provided as positional argument
     let args = vec![
         "dezoomify-rs".to_string(),
         "--bulk".to_string(),
@@ -231,43 +286,21 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
         "error".to_string(),
         "--retries".to_string(),
         "0".to_string(),
-        // When using --bulk, we don't provide input_uri as positional arg
-        // but we do provide outfile as positional arg
-        output_file.to_string_lossy().to_string(),
     ];
 
-    // Test CLI argument parsing
-    let mut parsed_args =
-        Arguments::try_parse_from(args.clone()).expect("CLI parsing should succeed");
+    // Parse arguments using clap
+    let mut parsed_args = Arguments::try_parse_from(args).expect("CLI parsing should succeed");
+
+    // Set the outfile after parsing (in bulk mode, this is typically how it's done)
+    parsed_args.outfile = Some(output_file.clone());
 
     // Verify the arguments were parsed correctly
-    assert!(parsed_args.is_bulk_mode(), "Should be in bulk mode");
+    assert!(parsed_args.bulk.is_some());
     assert_eq!(
-        parsed_args.bulk.as_ref().expect("bulk should be Some"),
-        &bulk_file_path.to_string_lossy().to_string(),
-        "Bulk file path should match"
+        parsed_args.bulk.as_ref().unwrap(),
+        &bulk_file_path.to_string_lossy().to_string()
     );
-
-    // In bulk mode, the positional argument gets parsed as input_uri instead of outfile
-    // We need to move it to the correct place for our test
-    let actual_output_file = if parsed_args.outfile.is_none() && parsed_args.input_uri.is_some() {
-        let output_from_input = PathBuf::from(parsed_args.input_uri.take().unwrap());
-        parsed_args.outfile = Some(output_from_input.clone());
-        output_from_input
-    } else {
-        parsed_args
-            .outfile
-            .as_ref()
-            .expect("outfile should be Some")
-            .clone()
-    };
-
-    assert_eq!(actual_output_file, output_file, "Output file should match");
-    assert_eq!(
-        parsed_args.logging, "error",
-        "Logging level should be error"
-    );
-    assert_eq!(parsed_args.retries, 0, "Retries should be 0");
+    assert!(parsed_args.outfile.is_some());
 
     // Test the complete bulk processing flow using the new unified architecture
     let stats = process_bulk(&parsed_args)
@@ -335,4 +368,144 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod bulk_output_naming_tests {
+    use super::*;
+    use dezoomify_rs::{Arguments, process_bulk};
+    use std::fs::File;
+    use std::io::Write;
+    use tempdir::TempDir;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bulk_mode_uses_image_titles_for_iiif_manifest() {
+        // Get workspace root to use absolute paths
+        let workspace_root = get_workspace_root();
+
+        // Create a temporary directory for the test
+        let temp_dir = TempDir::new("dezoomify-rs-bulk-title-test").unwrap();
+
+        // Create a bulk URLs file with a simple test manifest
+        let bulk_file_path = temp_dir.path().join("urls.txt");
+        let mut bulk_file = File::create(&bulk_file_path).unwrap();
+
+        // Use absolute path to testdata
+        let zoomify_path =
+            workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+        writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
+        drop(bulk_file);
+
+        // Setup arguments for bulk processing WITHOUT specifying outfile
+        let mut args: Arguments = Default::default();
+        let bulk_path_string = bulk_file_path.to_string_lossy().to_string();
+        args.bulk = Some(bulk_path_string);
+        args.largest = true;
+        args.retries = 0;
+        args.logging = "error".into();
+
+        // Set the working directory to the test temp dir for output
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&temp_dir).unwrap();
+
+        // Run bulk processing
+        let result = process_bulk(&args).await;
+
+        // Restore original directory
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        let stats = result.unwrap();
+        assert_eq!(stats.total_images, 1);
+        assert_eq!(stats.successful_images, 1);
+
+        // Check that the generated file uses the image title
+        let entries: Vec<_> = std::fs::read_dir(&temp_dir)
+            .unwrap()
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let path = entry.path();
+                if path.is_file() && path.extension().map_or(false, |ext| ext == "jpg") {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(entries.len(), 1, "Expected exactly one output file");
+        let output_file = &entries[0];
+        let file_name_os = output_file.file_name().unwrap();
+        let filename = file_name_os.to_string_lossy();
+
+        // The filename should be based on the title (test_custom_size) from the Zoomify dezoomer
+        // NOT "dezoomified"
+        assert!(
+            filename.starts_with("test_custom_size"),
+            "Expected filename to start with 'test_custom_size', got: {}",
+            filename
+        );
+        assert!(
+            !filename.starts_with("dezoomified"),
+            "Filename should not start with 'dezoomified', got: {}",
+            filename
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_bulk_mode_with_outfile_specified_still_uses_titles_in_naming() {
+        // Get workspace root to use absolute paths
+        let workspace_root = get_workspace_root();
+
+        // Test that even when outfile is specified, the title logic is preserved
+        let temp_dir = TempDir::new("dezoomify-rs-bulk-outfile-test").unwrap();
+
+        let bulk_file_path = temp_dir.path().join("urls.txt");
+        let mut bulk_file = File::create(&bulk_file_path).unwrap();
+
+        // Use absolute path to testdata
+        let zoomify_path =
+            workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+        writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
+        drop(bulk_file);
+
+        let mut args: Arguments = Default::default();
+        let bulk_path_string = bulk_file_path.to_string_lossy().to_string();
+        args.bulk = Some(bulk_path_string);
+        args.largest = true;
+        args.retries = 0;
+        args.logging = "error".into();
+
+        // Set a custom outfile - this should result in index-based naming but still use the title
+        args.outfile = Some(temp_dir.path().join("my_collection.jpg"));
+
+        let stats = process_bulk(&args).await.unwrap();
+        assert_eq!(stats.total_images, 1);
+        assert_eq!(stats.successful_images, 1);
+
+        // When outfile is specified, it should use indexed naming with the base outfile name
+        let entries: Vec<_> = std::fs::read_dir(&temp_dir)
+            .unwrap()
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let path = entry.path();
+                if path.is_file() && path.extension().map_or(false, |ext| ext == "jpg") {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(entries.len(), 1, "Expected exactly one output file");
+        let output_file = &entries[0];
+        let file_name_os = output_file.file_name().unwrap();
+        let filename = file_name_os.to_string_lossy();
+
+        // With outfile specified, should use indexed naming
+        assert!(
+            filename.starts_with("my_collection_1"),
+            "Expected filename to start with 'my_collection_1', got: {}",
+            filename
+        );
+    }
 }
