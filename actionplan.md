@@ -213,18 +213,56 @@ impl Dezoomer for IIIF {
 
 **Remarks:** Successfully created BulkTextDezoomer that parses text files containing URLs. Supports comments (#) and empty lines. Extracts titles from URLs for better identification. Returns `DezoomerResult::ImageUrls` for recursive processing by other dezoomers. Added backward compatible `zoom_levels` method. Comprehensive test suite with 7 tests covering parsing, title extraction, and error scenarios. Registered in `auto.rs` dezoomer list. All 150 tests passing. Committed as 42eb2b9.
 
-### Step 7: Update Main Processing Logic
+### Step 7: Update Main Processing Logic 🔄 IN PROGRESS
 **Files to modify:** `src/lib.rs`, main processing functions
 
+#### Step 7.1: Fix ZoomableImage Trait Object Pattern ✅ DONE
 **Tasks:**
-1. Handle `DezoomerResult::ImageUrls` by recursively calling other dezoomers
-2. Handle `DezoomerResult::Images` with new image picker
-3. Update level picker to work with selected image
+1. ✅ Add image picker infrastructure for multi-image selection
+2. ✅ Add processing framework for `DezoomerResult` enum
+3. ✅ Modify `ZoomableImage` trait to avoid cloning issues
+4. ✅ Update implementations to return `ZoomLevels` properly
+
+**Remarks:** Framework infrastructure successfully added. The new `dezoomer_result()` method is supported and processing functions are in place. Committed as faf5bd2.
+
+#### Step 7.2: Implement URL Recursive Processing 🔄 CURRENT
+**Tasks:**
+1. 🔄 Create `process_image_urls()` function to handle `DezoomerResult::ImageUrls`
+2. 🔄 Implement iterative approach to avoid async recursion issues
+3. 🔄 Add proper error handling and logging for URL processing
+
+**Files to modify:** `src/lib.rs`
+
+#### Step 7.3: Activate New Processing Pipeline
+**Tasks:**
+1. Replace fallback with actual new processing logic in `find_zoomlevel()`
+2. Test image selection with multiple images from IIIF manifests
+3. Test URL processing with bulk text files
+
+**Files to modify:** `src/lib.rs`
+
+#### Step 7.4: Add Command Line Options for Image Selection
+**Tasks:**
+1. Add `--image-index` option to `Arguments` for non-interactive selection
+2. Update `choose_image()` to respect command line preference
+3. Add automatic selection logic (first image, largest, etc.)
+
+**Files to modify:** `src/arguments.rs`, `src/lib.rs`
+
+#### Step 7.5: Integration Testing and Refinement
+**Tasks:**
+1. Test with real IIIF manifests that return multiple images
+2. Test with bulk text files containing mixed URL types
+3. Test interactive image selection UI
+4. Performance testing and optimization
 
 **Tests to run:**
-- `cargo clippy` - should pass
-- `cargo test` - should pass
-- Integration tests with various input types
+- ✅ `cargo clippy` - should pass
+- ✅ `cargo test` - should pass (all 150 tests passing)
+- 🔄 Integration tests with various input types
+- 🔄 Manual testing with real-world inputs
+
+**Current Status:** Step 7.1 complete. Starting Step 7.2 - implementing URL recursive processing.
 
 ### Step 8: Remove Old Bulk Processing
 **Files to modify/remove:** `src/bulk/` directory

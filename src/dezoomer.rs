@@ -66,8 +66,8 @@ pub type ZoomLevels = Vec<ZoomLevel>;
 
 /// Represents a single zoomable image with multiple resolution levels
 pub trait ZoomableImage: Send + Sync + std::fmt::Debug {
-    /// Get all available zoom levels for this image
-    fn zoom_levels(&self) -> Result<ZoomLevels, DezoomerError>;
+    /// Extract all available zoom levels for this image (consumes self)
+    fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError>;
     
     /// Get a human-readable title for this image
     fn title(&self) -> Option<String>;
@@ -102,12 +102,8 @@ impl SimpleZoomableImage {
 }
 
 impl ZoomableImage for SimpleZoomableImage {
-    fn zoom_levels(&self) -> Result<ZoomLevels, DezoomerError> {
-        // For now, return an error if already consumed.
-        // In the future, we might want to change the trait to take &mut self
-        Err(DezoomerError::DownloadError { 
-            msg: "SimpleZoomableImage zoom levels cannot be retrieved multiple times".to_string() 
-        })
+    fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError> {
+        Ok(self.zoom_levels)
     }
     
     fn title(&self) -> Option<String> {
@@ -422,11 +418,12 @@ mod tests {
         // Test title retrieval
         assert_eq!(image.title(), title);
         
-        // Test that zoom_levels returns an error (as currently implemented)
-        assert!(image.zoom_levels().is_err());
-        
         // Test that the image can be used as a ZoomableImage trait object
         let boxed_image: Box<dyn ZoomableImage> = Box::new(image);
         assert_eq!(boxed_image.title(), title);
+        
+        // Test that into_zoom_levels works correctly
+        let extracted_levels = boxed_image.into_zoom_levels().unwrap();
+        assert_eq!(extracted_levels.len(), 1);
     }
 }

@@ -213,20 +213,20 @@ fn choose_image(mut images: Vec<Box<dyn ZoomableImage>>, _args: &Arguments) -> R
     }
 }
 
-/// A wrapper that holds both the ZoomableImage and its extracted zoom levels
+/// A wrapper that holds extracted zoom levels and title
 struct ImageWithLevels {
-    _image: Box<dyn ZoomableImage>,
     zoom_levels: ZoomLevels,
     title: Option<String>,
 }
 
 /// Extract zoom levels from a ZoomableImage and create a wrapper
 fn extract_zoom_levels_from_image(image: Box<dyn ZoomableImage>) -> Result<ImageWithLevels, ZoomError> {
-    let _title = image.title();
-    // For our current implementations, we need to work around the trait object limitation
-    // by getting the zoom levels in a different way. For now, we'll return an error
-    // that will trigger the fallback to the old method.
-    Err(ZoomError::NoLevels)
+    let title = image.title();
+    let zoom_levels = image.into_zoom_levels().map_err(|e| ZoomError::Dezoomer { source: e })?;
+    Ok(ImageWithLevels {
+        zoom_levels,
+        title,
+    })
 }
 
 /// Finds the appropriate zoomlevel for a given size if one is specified,

@@ -25,10 +25,8 @@ impl KrpanoZoomableImage {
 }
 
 impl ZoomableImage for KrpanoZoomableImage {
-    fn zoom_levels(&self) -> Result<ZoomLevels, DezoomerError> {
-        Err(DezoomerError::DownloadError { 
-            msg: "KrpanoZoomableImage zoom levels cannot be retrieved multiple times".to_string() 
-        })
+    fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError> {
+        Ok(self.zoom_levels)
     }
     
     fn title(&self) -> Option<String> {

@@ -10,25 +10,12 @@ impl Dezoomer for BulkTextDezoomer {
         "bulk_text"
     }
 
-    fn zoom_levels(&mut self, data: &DezoomerInput) -> Result<ZoomLevels, DezoomerError> {
-        // Use default implementation for backward compatibility
-        let result = self.dezoomer_result(data)?;
-        match result {
-            DezoomerResult::Images(images) => {
-                if images.len() == 1 {
-                    images[0].zoom_levels()
-                } else {
-                    Err(DezoomerError::DownloadError {
-                        msg: "BulkTextDezoomer found multiple URLs but zoom_levels method expects only one".to_string()
-                    })
-                }
-            }
-            DezoomerResult::ImageUrls(_) => {
-                Err(DezoomerError::DownloadError {
-                    msg: "BulkTextDezoomer returned URLs that need further processing".to_string()
-                })
-            }
-        }
+    fn zoom_levels(&mut self, _data: &DezoomerInput) -> Result<ZoomLevels, DezoomerError> {
+        // BulkTextDezoomer returns URLs that need further processing, not direct zoom levels
+        // This method is only provided for backward compatibility but will always error
+        Err(DezoomerError::DownloadError {
+            msg: "BulkTextDezoomer produces URLs that need further processing by other dezoomers. Use dezoomer_result() instead.".to_string()
+        })
     }
 
     fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
