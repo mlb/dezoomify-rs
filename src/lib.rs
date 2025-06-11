@@ -38,6 +38,7 @@ pub mod tile;
 mod vec2d;
 
 pub mod auto;
+pub mod bulk_text;
 pub mod custom_yaml;
 pub mod dzi;
 pub mod generic;

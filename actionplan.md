@@ -182,18 +182,20 @@ impl Dezoomer for IIIF {
 
 **Remarks:** Successfully implemented IIIF dezoomer transformation with intelligent detection between manifests and info.json files. Manifests return URLs for recursive processing, while info.json files return direct images. Added comprehensive tests. All 140 tests pass. Committed as edb1d81.
 
-### Step 5: Transform Krpano Dezoomer
+### Step 5: Transform Krpano Dezoomer ✅ DONE
 **Files to modify:** `src/krpano/mod.rs`
 
 **Tasks:**
-1. Group krpano zoom levels by logical image (side/face)
-2. Create `KrpanoZoomableImage` for each group
-3. Implement `dezoomer_result` method
+1. ✅ Group krpano zoom levels by logical image (side/face)
+2. ✅ Create `KrpanoZoomableImage` for each group
+3. ✅ Implement `dezoomer_result` method
 
 **Tests to run:**
-- `cargo clippy` - should pass
-- `cargo test` - Krpano tests should pass
-- Test that Krpano returns multiple images for cube faces
+- ✅ `cargo clippy` - should pass
+- ✅ `cargo test` - Krpano tests should pass
+- ✅ Test that Krpano returns multiple images for cube faces
+
+**Remarks:** Successfully transformed Krpano dezoomer to group levels by logical image (scenes). Created `KrpanoZoomableImage` struct with proper `ZoomableImage` implementation. Added `load_images_from_properties` function that processes each `ImageInfo` separately instead of flattening. Smart title generation combines global title with scene names. Added comprehensive tests for single images, cube faces, and multi-scene scenarios. Multi-scene Krpano files (like `krpano_scenes.xml` with 3 scenes) now return 3 separate `KrpanoZoomableImage` objects. All 143 tests passing. Committed as 47559dd.
 
 ### Step 6: Create Bulk Text Dezoomer
 **Files to create:** `src/bulk_text/mod.rs`
