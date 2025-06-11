@@ -35,18 +35,37 @@ impl ZoomableImage for IIIFZoomableImage {
     fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError> {
         Ok(self.zoom_levels)
     }
-    
+
     fn title(&self) -> Option<String> {
         self.title.clone()
     }
 }
 
 /// Determines the best title for an image from IIIF manifest metadata
-fn determine_title(image_info: &manifest_types::ExtractedImageInfo) -> Option<String> {
-    // Prioritize metadata title, then canvas label, then manifest label
-    image_info.metadata_title.clone()
-        .or_else(|| image_info.canvas_label.clone())
-        .or_else(|| image_info.manifest_label.clone())
+pub fn determine_title(image_info: &manifest_types::ExtractedImageInfo) -> Option<String> {
+    let mut parts = Vec::new();
+
+    if let Some(manifest_label) = &image_info.manifest_label {
+        parts.push(manifest_label.as_str());
+    }
+
+    if let Some(metadata_title) = &image_info.metadata_title {
+        if !parts.contains(&metadata_title.as_str()) {
+            parts.push(metadata_title.as_str());
+        }
+    }
+
+    if let Some(canvas_label) = &image_info.canvas_label {
+        if !parts.contains(&canvas_label.as_str()) {
+            parts.push(canvas_label.as_str());
+        }
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" - "))
+    }
 }
 
 custom_error! {pub IIIFError
@@ -71,13 +90,75 @@ impl Dezoomer for IIIF {
         let uri = with_contents.uri;
         Ok(zoom_levels(uri, contents)?)
     }
-    
+
     fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
         let with_contents = data.with_contents()?;
         let contents = with_contents.contents;
         let uri = with_contents.uri;
-        
-        // Try to parse as IIIF manifest first
+
+        // First, try to determine what type of IIIF content this is by doing a quick parse
+        // to check the "type" field without generating warnings
+        if let Ok(quick_check) = serde_json::from_slice::<serde_json::Value>(contents) {
+            if let Some(type_value) = quick_check.get("type").or_else(|| quick_check.get("@type")) {
+                if let Some(type_str) = type_value.as_str() {
+                    match type_str {
+                        "ImageService2" | "ImageService3" | "iiif:ImageProfile" => {
+                            // This is clearly an Image Service info.json, try parsing it directly
+                            match zoom_levels(uri, contents) {
+                                Ok(levels) => {
+                                    let image = IIIFZoomableImage::new(levels, None);
+                                    return Ok(DezoomerResult::Images(vec![Box::new(image)]));
+                                }
+                                Err(e) => return Err(e.into()),
+                            }
+                        }
+                        "Manifest" => {
+                            // This is clearly a manifest, try parsing it as such
+                            match parse_iiif_manifest_from_bytes(contents, uri) {
+                                Ok(image_infos) if !image_infos.is_empty() => {
+                                    let image_urls: Vec<ZoomableImageUrl> = image_infos
+                                        .into_iter()
+                                        .map(|image_info| {
+                                            let title = determine_title(&image_info);
+                                            ZoomableImageUrl {
+                                                url: image_info.image_uri,
+                                                title,
+                                            }
+                                        })
+                                        .collect();
+
+                                    return Ok(DezoomerResult::ImageUrls(image_urls));
+                                }
+                                Ok(_) => {
+                                    // Empty image_infos, fall through to heuristic approach
+                                }
+                                Err(e) => return Err(e.into()),
+                            }
+                        }
+                        _ => {
+                            // Unknown type, fall through to heuristic detection below
+                        }
+                    }
+                }
+            }
+        }
+
+        // If type detection didn't work or type is unknown, use heuristic approach
+        // Check if URL suggests it's an info.json file
+        if uri.ends_with("/info.json") {
+            // Likely an Image Service, try parsing as info.json first
+            match zoom_levels(uri, contents) {
+                Ok(levels) => {
+                    let image = IIIFZoomableImage::new(levels, None);
+                    return Ok(DezoomerResult::Images(vec![Box::new(image)]));
+                }
+                Err(_) => {
+                    // Fall through to try as manifest
+                }
+            }
+        }
+
+        // Try to parse as IIIF manifest
         match parse_iiif_manifest_from_bytes(contents, uri) {
             Ok(image_infos) if !image_infos.is_empty() => {
                 // Successfully parsed as manifest with images
@@ -91,7 +172,7 @@ impl Dezoomer for IIIF {
                         }
                     })
                     .collect();
-                
+
                 Ok(DezoomerResult::ImageUrls(image_urls))
             }
             _ => {
@@ -101,7 +182,7 @@ impl Dezoomer for IIIF {
                         let image = IIIFZoomableImage::new(levels, None);
                         Ok(DezoomerResult::Images(vec![Box::new(image)]))
                     }
-                    Err(e) => Err(e.into())
+                    Err(e) => Err(e.into()),
                 }
             }
         }
@@ -277,12 +358,18 @@ pub fn parse_iiif_manifest_from_bytes(
         serde_json::from_slice(bytes).map_err(|e| IIIFError::JsonError { source: e })?;
 
     if manifest.manifest_type != "Manifest" {
-        // While we could be more lenient, the Presentation API spec says this should be "Manifest".
-        // If it's something else, it's likely not what we expect, or a different IIIF spec.
-        warn!(
-            "Attempted to parse IIIF manifest from {} but 'type' field was '{}' instead of 'Manifest'. Proceeding, but this may indicate an incorrect file type.",
-            manifest_url, manifest.manifest_type
-        );
+        // Don't warn for known IIIF Image Service types, as these are valid but not manifests
+        if !matches!(
+            manifest.manifest_type.as_str(),
+            "ImageService2" | "ImageService3" | "iiif:ImageProfile"
+        ) {
+            // While we could be more lenient, the Presentation API spec says this should be "Manifest".
+            // If it's something else, it's likely not what we expect, or a different IIIF spec.
+            warn!(
+                "Attempted to parse IIIF manifest from {} but 'type' field was '{}' instead of 'Manifest'. Proceeding, but this may indicate an incorrect file type.",
+                manifest_url, manifest.manifest_type
+            );
+        }
     }
 
     Ok(manifest.extract_image_infos(manifest_url))
@@ -611,19 +698,20 @@ mod manifest_parsing_tests {
             }
           ]
         }
-        "#.as_bytes();
-        
+        "#
+        .as_bytes();
+
         let input = DezoomerInput {
             uri: "https://example.com/manifest.json".to_string(),
             contents: PageContents::Success(manifest_data.to_vec()),
         };
-        
+
         let result = dezoomer.dezoomer_result(&input).unwrap();
         match result {
             DezoomerResult::ImageUrls(urls) => {
                 assert_eq!(urls.len(), 1);
                 assert_eq!(urls[0].url, "https://example.com/iiif/page1/info.json");
-                assert_eq!(urls[0].title, Some("Page 1".to_string()));
+                assert_eq!(urls[0].title, Some("Test Book - Page 1".to_string()));
             }
             _ => panic!("Expected ImageUrls result"),
         }
@@ -641,13 +729,14 @@ mod manifest_parsing_tests {
           "tiles" : [
              { "width" : 512, "height" : 512, "scaleFactors" : [ 1, 2, 4 ] }
           ]
-        }"#.as_bytes();
-        
+        }"#
+        .as_bytes();
+
         let input = DezoomerInput {
             uri: "https://example.com/image/info.json".to_string(),
             contents: PageContents::Success(info_data.to_vec()),
         };
-        
+
         let result = dezoomer.dezoomer_result(&input).unwrap();
         match result {
             DezoomerResult::Images(images) => {

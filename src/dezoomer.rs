@@ -68,7 +68,7 @@ pub type ZoomLevels = Vec<ZoomLevel>;
 pub trait ZoomableImage: Send + Sync + std::fmt::Debug {
     /// Extract all available zoom levels for this image (consumes self)
     fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError>;
-    
+
     /// Get a human-readable title for this image
     fn title(&self) -> Option<String>;
 }
@@ -105,7 +105,7 @@ impl ZoomableImage for SimpleZoomableImage {
     fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError> {
         Ok(self.zoom_levels)
     }
-    
+
     fn title(&self) -> Option<String> {
         self.title.clone()
     }
@@ -132,14 +132,14 @@ pub trait Dezoomer {
 
     /// List of the various sizes at which an image is available
     fn zoom_levels(&mut self, data: &DezoomerInput) -> Result<ZoomLevels, DezoomerError>;
-    
+
     /// Extract images or image URLs from the input data
     fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
         let levels = self.zoom_levels(data)?;
         let image = SimpleZoomableImage::new(levels, None);
         Ok(DezoomerResult::Images(vec![Box::new(image)]))
     }
-    
+
     fn assert(&self, c: bool) -> Result<(), DezoomerError> {
         if c {
             Ok(())
@@ -412,16 +412,16 @@ mod tests {
     fn test_simple_zoomable_image() {
         let zoom_levels: ZoomLevels = vec![Box::new(FakeLvl {})];
         let title = Some("Test Image".to_string());
-        
+
         let image = SimpleZoomableImage::new(zoom_levels, title.clone());
-        
+
         // Test title retrieval
         assert_eq!(image.title(), title);
-        
+
         // Test that the image can be used as a ZoomableImage trait object
         let boxed_image: Box<dyn ZoomableImage> = Box::new(image);
         assert_eq!(boxed_image.title(), title);
-        
+
         // Test that into_zoom_levels works correctly
         let extracted_levels = boxed_image.into_zoom_levels().unwrap();
         assert_eq!(extracted_levels.len(), 1);

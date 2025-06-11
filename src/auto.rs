@@ -1,6 +1,8 @@
 use log::debug;
 
-use crate::dezoomer::{Dezoomer, DezoomerError, DezoomerInput, DezoomerResult, ZoomLevel, ZoomLevels};
+use crate::dezoomer::{
+    Dezoomer, DezoomerError, DezoomerInput, DezoomerResult, ZoomLevel, ZoomLevels,
+};
 use crate::errors::DezoomerError::NeedsData;
 
 pub fn all_dezoomers(include_generic: bool) -> Vec<Box<dyn Dezoomer>> {
@@ -98,7 +100,10 @@ impl Dezoomer for AutoDezoomer {
             let dezoomer = &mut self.dezoomers[i];
             let keep = match dezoomer.dezoomer_result(data) {
                 Ok(result) => {
-                    debug!("dezoomer '{}' successfully processed the input", dezoomer.name());
+                    debug!(
+                        "dezoomer '{}' successfully processed the input",
+                        dezoomer.name()
+                    );
                     return Ok(result);
                 }
                 Err(DezoomerError::NeedsData { uri }) => {

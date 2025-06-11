@@ -146,21 +146,23 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
 
     // Execute bulk processing using the new unified architecture
     let stats = process_bulk(&args).await?;
-    
+
     // Verify statistics
-    assert_eq!(stats.total_images, 2, "Should process exactly 2 images from bulk file");
+    assert_eq!(
+        stats.total_images, 2,
+        "Should process exactly 2 images from bulk file"
+    );
     assert!(
         stats.successful_images + stats.partial_downloads > 0,
         "At least some images should succeed"
     );
-    
+
     let successful_count = stats.successful_images + stats.partial_downloads;
 
     assert_eq!(
         successful_count, 2,
         "Both URLs should be processed successfully"
     );
-
 
     // Verify the output files have the expected naming pattern
     let expected_file1 = output_base.parent().unwrap().join("bulk_test_1.jpg");
@@ -191,8 +193,6 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
 
     Ok(())
 }
-
-
 
 #[allow(dead_code)]
 async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
@@ -270,8 +270,10 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     assert_eq!(parsed_args.retries, 0, "Retries should be 0");
 
     // Test the complete bulk processing flow using the new unified architecture
-    let stats = process_bulk(&parsed_args).await.expect("Bulk processing should succeed");
-    
+    let stats = process_bulk(&parsed_args)
+        .await
+        .expect("Bulk processing should succeed");
+
     // Verify statistics
     assert_eq!(stats.total_images, 2, "Should process exactly 2 images");
     let successful_count = stats.successful_images + stats.partial_downloads;

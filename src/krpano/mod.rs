@@ -28,7 +28,7 @@ impl ZoomableImage for KrpanoZoomableImage {
     fn into_zoom_levels(self: Box<Self>) -> Result<ZoomLevels, DezoomerError> {
         Ok(self.zoom_levels)
     }
-    
+
     fn title(&self) -> Option<String> {
         self.title.clone()
     }
@@ -120,7 +120,10 @@ fn load_from_properties(url: &str, contents: &[u8]) -> Result<ZoomLevels, Krpano
         .into_zoom_levels())
 }
 
-fn load_images_from_properties(url: &str, contents: &[u8]) -> Result<Vec<Box<dyn ZoomableImage>>, KrpanoError> {
+fn load_images_from_properties(
+    url: &str,
+    contents: &[u8],
+) -> Result<Vec<Box<dyn ZoomableImage>>, KrpanoError> {
     let image_properties: KrpanoMetadata = serde_xml_rs::from_reader(contents)?;
     let base_url = Arc::from(url);
     let global_title = image_properties.get_title().unwrap_or("").to_string();
@@ -133,58 +136,65 @@ fn load_images_from_properties(url: &str, contents: &[u8]) -> Result<Vec<Box<dyn
             let base_url = Arc::clone(&base_url);
             let global_title_for_levels = Arc::from(global_title.as_str());
             let name_for_levels = Arc::clone(&name);
-            
-            let levels: ZoomLevels = image.level.into_iter().flat_map(move |level| {
-                let name = Arc::clone(&name_for_levels);
-                let base_url = Arc::clone(&base_url);
-                let global_title = Arc::clone(&global_title_for_levels);
-                level
-                    .level_descriptions(None)
-                    .into_iter()
-                    .flat_map(move |level_desc| {
-                        let name = Arc::clone(&name);
-                        let base_url = Arc::clone(&base_url);
-                        let global_title = Arc::clone(&global_title);
-                        level_desc
-                            .map_err(|err| warn!("bad krpano level: {err}"))
-                            .into_iter()
-                            .flat_map(
-                                move |LevelDesc {
-                                          name: shape_name,
-                                          size,
-                                          tilesize,
-                                          url,
-                                          level_index,
-                                      }| {
-                                    let level = level_index + base_index as usize;
-                                    let name = Arc::clone(&name);
-                                    let base_url = Arc::clone(&base_url);
-                                    let global_title = Arc::clone(&global_title);
-                                    url.all_sides(level).flat_map(move |(side_name, template)| {
-                                        let base_url = Arc::clone(&base_url);
+
+            let levels: ZoomLevels = image
+                .level
+                .into_iter()
+                .flat_map(move |level| {
+                    let name = Arc::clone(&name_for_levels);
+                    let base_url = Arc::clone(&base_url);
+                    let global_title = Arc::clone(&global_title_for_levels);
+                    level
+                        .level_descriptions(None)
+                        .into_iter()
+                        .flat_map(move |level_desc| {
+                            let name = Arc::clone(&name);
+                            let base_url = Arc::clone(&base_url);
+                            let global_title = Arc::clone(&global_title);
+                            level_desc
+                                .map_err(|err| warn!("bad krpano level: {err}"))
+                                .into_iter()
+                                .flat_map(
+                                    move |LevelDesc {
+                                              name: shape_name,
+                                              size,
+                                              tilesize,
+                                              url,
+                                              level_index,
+                                          }| {
+                                        let level = level_index + base_index as usize;
                                         let name = Arc::clone(&name);
+                                        let base_url = Arc::clone(&base_url);
                                         let global_title = Arc::clone(&global_title);
-                                        tilesize.or(root_tile_size).map(|tile_size| Level {
-                                            base_url,
-                                            size,
-                                            tile_size,
-                                            base_index,
-                                            template,
-                                            shape_name,
-                                            side_name,
-                                            name: Arc::clone(&name),
-                                            title: Arc::clone(&global_title),
-                                        })
-                                    })
-                                },
-                            )
-                    })
-            }).into_zoom_levels();
+                                        url.all_sides(level).flat_map(
+                                            move |(side_name, template)| {
+                                                let base_url = Arc::clone(&base_url);
+                                                let name = Arc::clone(&name);
+                                                let global_title = Arc::clone(&global_title);
+                                                tilesize.or(root_tile_size).map(|tile_size| Level {
+                                                    base_url,
+                                                    size,
+                                                    tile_size,
+                                                    base_index,
+                                                    template,
+                                                    shape_name,
+                                                    side_name,
+                                                    name: Arc::clone(&name),
+                                                    title: Arc::clone(&global_title),
+                                                })
+                                            },
+                                        )
+                                    },
+                                )
+                        })
+                })
+                .into_zoom_levels();
 
             let image_title = if name.is_empty() && global_title.is_empty() {
                 None
             } else {
-                let title = [global_title.as_str(), name.as_ref()].iter()
+                let title = [global_title.as_str(), name.as_ref()]
+                    .iter()
                     .filter(|s| !s.is_empty())
                     .cloned()
                     .collect::<Vec<_>>()
@@ -336,13 +346,14 @@ fn test_dezoomer_result_single_image() {
         <image>
             <flat url="level=%l x=%0x y=%0y" multires="1,2x3,3x4x3"/>
         </image>
-        </krpano>"#.as_bytes();
-    
+        </krpano>"#
+        .as_bytes();
+
     let input = DezoomerInput {
         uri: "http://test.com".to_string(),
         contents: PageContents::Success(data.to_vec()),
     };
-    
+
     let result = dezoomer.dezoomer_result(&input).unwrap();
     match result {
         DezoomerResult::Images(images) => {
@@ -363,12 +374,12 @@ fn test_dezoomer_result_cube_faces() {
             </level>
         </image>
         </krpano>"#.as_bytes();
-    
+
     let input = DezoomerInput {
         uri: "http://test.com".to_string(),
         contents: PageContents::Success(data.to_vec()),
     };
-    
+
     let result = dezoomer.dezoomer_result(&input).unwrap();
     match result {
         DezoomerResult::Images(images) => {
@@ -383,17 +394,17 @@ fn test_dezoomer_result_cube_faces() {
 fn test_dezoomer_result_multiple_scenes() {
     let mut dezoomer = KrpanoDezoomer;
     let data = std::fs::read("testdata/krpano/krpano_scenes.xml").unwrap();
-    
+
     let input = DezoomerInput {
         uri: "http://test.com/scenes.xml".to_string(),
         contents: PageContents::Success(data),
     };
-    
+
     let result = dezoomer.dezoomer_result(&input).unwrap();
     match result {
         DezoomerResult::Images(images) => {
             assert_eq!(images.len(), 3);
-            
+
             let titles: Vec<Option<String>> = images.iter().map(|img| img.title()).collect();
             assert!(titles.contains(&Some(" Saint Thomas (1618 - 1620) - Diego Velazquez - Museum of Fine Arts, Orleans ( France) scene_Color".to_string())));
             assert!(titles.contains(&Some(" Saint Thomas (1618 - 1620) - Diego Velazquez - Museum of Fine Arts, Orleans ( France) scene_3D".to_string())));
