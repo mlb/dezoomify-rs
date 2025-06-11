@@ -91,16 +91,13 @@ pub enum DezoomerResult {
 
 #[derive(Debug)]
 pub struct SimpleZoomableImage {
-    zoom_levels: Option<ZoomLevels>,
+    zoom_levels: ZoomLevels,
     title: Option<String>,
 }
 
 impl SimpleZoomableImage {
     pub fn new(zoom_levels: ZoomLevels, title: Option<String>) -> Self {
-        SimpleZoomableImage { 
-            zoom_levels: Some(zoom_levels), 
-            title 
-        }
+        SimpleZoomableImage { zoom_levels, title }
     }
 }
 
@@ -139,6 +136,14 @@ pub trait Dezoomer {
 
     /// List of the various sizes at which an image is available
     fn zoom_levels(&mut self, data: &DezoomerInput) -> Result<ZoomLevels, DezoomerError>;
+    
+    /// Extract images or image URLs from the input data
+    fn dezoomer_result(&mut self, data: &DezoomerInput) -> Result<DezoomerResult, DezoomerError> {
+        let levels = self.zoom_levels(data)?;
+        let image = SimpleZoomableImage::new(levels, None);
+        Ok(DezoomerResult::Images(vec![Box::new(image)]))
+    }
+    
     fn assert(&self, c: bool) -> Result<(), DezoomerError> {
         if c {
             Ok(())
