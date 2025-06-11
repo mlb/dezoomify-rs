@@ -237,6 +237,8 @@ Options:
           If several zoom levels are available, then select the one with the largest height that is inferior to max-height
       --zoom-level <ZOOM_LEVEL>
           Select a specific zoom level by its index (0-based). If the specified level doesn't exist, falls back to the last one
+      --image-index <IMAGE_INDEX>
+          Select a specific image by its index (0-based) when multiple images are found. If not specified, the program will ask interactively when multiple images are available. If the specified index doesn't exist, falls back to the last one
   -n, --parallelism <PARALLELISM>
           Degree of parallelism to use. At most this number of tiles will be downloaded at the same time [default: 16]
   -r, --retries <RETRIES>
@@ -244,7 +246,7 @@ Options:
       --retry-delay <RETRY_DELAY>
           Amount of time to wait before retrying a request that failed. Applies only to the first retry. Subsequent retries follow an exponential backoff strategy: each one is twice as long as the previous one [default: 2s]
       --compression <COMPRESSION>
-          A number between 0 and 100 expressing how much to compress the output image. For lossy output formats such as jpeg, this affects the quality of the resulting image. 0 means less compression, 100 means more compression. Currently affects only the JPEG and PNG encoders [default: 20]
+          A number between 0 and 100 expressing how much to compress the output image. For lossy output formats such as jpeg, this affects the quality of the resulting image. 0 means less compression, 100 means more compression. Currently affects only the JPEG and PNG encoders [default: 5]
   -H, --header <HEADERS>
           Sets an HTTP header to use on requests. This option can be repeated in order to set multiple headers. You can use `-H "Referer: URL"` where URL is the URL of the website's viewer page in order to let the site think you come from the legitimate viewer
       --max-idle-per-host <MAX_IDLE_PER_HOST>
@@ -258,13 +260,54 @@ Options:
       --connect-timeout <CONNECT_TIMEOUT>
           Time after which we should give up when trying to connect to a server [default: 6s]
       --logging <LOGGING>
-          Level of logging verbosity. Set it to "debug" to get all logging messages [default: warn]
+          Level of logging verbosity. Set it to "debug" to get all logging messages [default: info]
   -c, --tile-cache <TILE_STORAGE_FOLDER>
           A place to store the image tiles when after they are downloaded and decrypted. By default, tiles are not stored to disk (which is faster), but using a tile cache allows retrying partially failed downloads, or stitching the tiles with an external program
       --bulk <BULK>
-          URL or path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL. Accepts both local file paths and HTTP(S) URLs. Can also directly process IIIF manifests. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
+          URL or path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL. Accepts both local file paths and HTTP(S) URLs. Can also directly process IIIF manifests to download all images with enhanced metadata-based filenames. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
   -V, --version
           Print version
+```
+
+## Multi-Image Selection
+
+Many sources contain multiple zoomable images rather than just one. Dezoomify-rs can handle these cases intelligently:
+
+### Automatic Detection
+- **IIIF Manifests**: When you provide a manifest URL, dezoomify-rs will extract all images and let you choose which one to download
+- **Krpano Scenes**: Multi-scene Krpano files (like panoramic tours) are processed as separate images
+- **Bulk Processing**: Text files with multiple URLs are processed sequentially
+
+### Interactive Selection
+When multiple images are found, dezoomify-rs will show you a list with titles and descriptions:
+```
+Found 3 images:
+[0] Front cover (2000x3000 pixels)
+[1] f. 1r - Gospel of Matthew begins (4000x6000 pixels) 
+[2] Back cover (2000x3000 pixels)
+Enter the image number to download (0-2): 
+```
+
+### Non-Interactive Selection
+For automated workflows, use the `--image-index` option:
+```sh
+# Download the second image (0-based indexing)
+dezoomify-rs --image-index 1 https://example.com/iiif/manifest.json
+
+# In bulk mode, the first image is selected automatically
+dezoomify-rs --bulk urls.txt
+```
+
+### Examples
+```sh
+# Interactive selection from an IIIF manifest
+dezoomify-rs https://library.example.edu/iiif/manuscript/manifest.json
+
+# Select specific image non-interactively  
+dezoomify-rs --image-index 2 https://library.example.edu/iiif/manuscript/manifest.json output.jpg
+
+# Bulk process with automatic first-image selection
+dezoomify-rs --bulk manuscript-urls.txt
 ```
 
 ## Documentation

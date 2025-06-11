@@ -26,26 +26,26 @@ pub struct Arguments {
     #[arg()]
     pub outfile: Option<PathBuf>,
 
-    /// Name of the dezoomer to use
+    /// Name of the dezoomer to use. "auto" will try to detect the format automatically
     #[arg(short, long, default_value = "auto")]
     dezoomer: String,
 
-    /// If several zoom levels are available, then select the largest one
+    /// If several zoom levels are available, select the largest one (highest resolution)
     #[arg(short, long)]
     pub largest: bool,
 
-    /// If several zoom levels are available, then select the one with the largest width that
-    /// is inferior to max-width.
+    /// If several zoom levels are available, select the one with the largest width that
+    /// does not exceed this value (in pixels)
     #[arg(short = 'w', long = "max-width")]
     max_width: Option<u32>,
 
-    /// If several zoom levels are available, then select the one with the largest height that
-    /// is inferior to max-height.
+    /// If several zoom levels are available, select the one with the largest height that
+    /// does not exceed this value (in pixels)
     #[arg(short = 'h', long = "max-height")]
     max_height: Option<u32>,
 
-    /// Select a specific zoom level by its index (0-based). If the specified level doesn't exist,
-    /// falls back to the last one.
+    /// Select a specific zoom level by its index (0-based). Use 0 for the smallest, 1 for the next level up, etc.
+    /// If the specified level doesn't exist, falls back to the highest available level
     #[arg(long = "zoom-level")]
     pub zoom_level: Option<usize>,
 
@@ -152,7 +152,7 @@ impl Default for Arguments {
             image_index: None,
             parallelism: 16,
             retries: 1,
-            compression: 20,
+            compression: 5,
             retry_delay: Duration::from_secs(2),
             headers: vec![],
             max_idle_per_host: 32,
