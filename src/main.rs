@@ -1,7 +1,7 @@
 use env_logger::TimestampPrecision;
 use human_panic::setup_panic;
 
-use dezoomify_rs::{Arguments, ZoomError, bulk, dezoomify};
+use dezoomify_rs::{Arguments, ZoomError, dezoomify, process_bulk};
 use log::{error, info, warn};
 
 #[tokio::main]
@@ -14,8 +14,12 @@ async fn main() {
 
     if args.is_bulk_mode() {
         // Bulk processing mode
-        match bulk::process_bulk(&args).await {
-            Ok(_) => {}
+        match process_bulk(&args).await {
+            Ok(stats) => {
+                if stats.failed_images > 0 || stats.partial_downloads > 0 {
+                    has_errors = true;
+                }
+            }
             Err(err) => {
                 error!("{err}");
                 has_errors = true;

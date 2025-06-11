@@ -26,28 +26,34 @@ pub struct Arguments {
     #[arg()]
     pub outfile: Option<PathBuf>,
 
-    /// Name of the dezoomer to use
+    /// Name of the dezoomer to use. "auto" will try to detect the format automatically
     #[arg(short, long, default_value = "auto")]
     dezoomer: String,
 
-    /// If several zoom levels are available, then select the largest one
+    /// If several zoom levels are available, select the largest one (highest resolution)
     #[arg(short, long)]
     pub largest: bool,
 
-    /// If several zoom levels are available, then select the one with the largest width that
-    /// is inferior to max-width.
+    /// If several zoom levels are available, select the one with the largest width that
+    /// does not exceed this value (in pixels)
     #[arg(short = 'w', long = "max-width")]
     max_width: Option<u32>,
 
-    /// If several zoom levels are available, then select the one with the largest height that
-    /// is inferior to max-height.
+    /// If several zoom levels are available, select the one with the largest height that
+    /// does not exceed this value (in pixels)
     #[arg(short = 'h', long = "max-height")]
     max_height: Option<u32>,
 
-    /// Select a specific zoom level by its index (0-based). If the specified level doesn't exist,
-    /// falls back to the last one.
+    /// Select a specific zoom level by its index (0-based). Use 0 for the smallest, 1 for the next level up, etc.
+    /// If the specified level doesn't exist, falls back to the highest available level
     #[arg(long = "zoom-level")]
     pub zoom_level: Option<usize>,
+
+    /// Select a specific image by its index (0-based) when multiple images are found.
+    /// If not specified, the program will ask interactively when multiple images are available.
+    /// If the specified index doesn't exist, falls back to the last one.
+    #[arg(long = "image-index")]
+    pub image_index: Option<usize>,
 
     /// Degree of parallelism to use. At most this number of
     /// tiles will be downloaded at the same time.
@@ -122,11 +128,15 @@ pub struct Arguments {
     #[arg(short = 'c', long = "tile-cache")]
     pub tile_storage_folder: Option<PathBuf>,
 
-    /// Path to a text file containing a list of URLs to process in bulk mode.
-    /// Each line in the file should contain one URL. In bulk mode, if no level-specifying
-    /// argument is defined (such as --max-width), then --largest is implied.
+    /// URL or path to a text file containing a list of URLs to process in bulk mode.
+    /// Each line in the file should contain one URL, optionally followed by a custom title.
+    /// Format: URL [custom title]
+    /// Lines starting with # are treated as comments and ignored.
+    /// Accepts both local file paths and HTTP(S) URLs.
+    /// Can also directly process IIIF manifests to download all images with enhanced metadata-based filenames.
+    /// In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied.
     #[arg(long = "bulk")]
-    pub bulk: Option<PathBuf>,
+    pub bulk: Option<String>,
 }
 
 impl Default for Arguments {
@@ -140,9 +150,10 @@ impl Default for Arguments {
             max_width: None,
             max_height: None,
             zoom_level: None,
+            image_index: None,
             parallelism: 16,
             retries: 1,
-            compression: 20,
+            compression: 5,
             retry_delay: Duration::from_secs(2),
             headers: vec![],
             max_idle_per_host: 32,
@@ -280,7 +291,7 @@ fn test_parse_duration() {
 fn test_bulk_url_reading() {
     // Test bulk mode detection
     let mut args = Arguments {
-        bulk: Some(PathBuf::from("dummy_bulk.txt")), // Path needs to be Some for is_bulk_mode
+        bulk: Some("dummy_bulk.txt".into()), // Path needs to be Some for is_bulk_mode
         ..Default::default()
     };
     assert!(args.is_bulk_mode());
@@ -306,7 +317,7 @@ fn test_should_use_largest() {
 
     // Reset and test bulk mode
     args.largest = false;
-    args.bulk = Some(std::path::PathBuf::from("test.txt"));
+    args.bulk = Some("test.txt".into());
     assert!(args.should_use_largest()); // Should be true in bulk mode without level options
 
     // With level options in bulk mode

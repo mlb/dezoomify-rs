@@ -123,6 +123,10 @@ find the URL of this file.
 
 Alternatively, you can find this url in your browser's network inspector when loading the image.
 
+#### IIIF Manifest Support
+
+dezoomify-rs also supports processing IIIF Presentation API manifests directly, which is particularly useful for downloading entire manuscripts or multi-page documents. When processing manifests, dezoomify-rs extracts metadata to generate meaningful filenames that include document titles and page/section labels rather than generic numbered files.
+
 ### DeepZoom
 
 The DeepZoom dezoomer takes the URL of a `dzi` file as input, which you can find using 
@@ -233,6 +237,8 @@ Options:
           If several zoom levels are available, then select the one with the largest height that is inferior to max-height
       --zoom-level <ZOOM_LEVEL>
           Select a specific zoom level by its index (0-based). If the specified level doesn't exist, falls back to the last one
+      --image-index <IMAGE_INDEX>
+          Select a specific image by its index (0-based) when multiple images are found. If not specified, the program will ask interactively when multiple images are available. If the specified index doesn't exist, falls back to the last one
   -n, --parallelism <PARALLELISM>
           Degree of parallelism to use. At most this number of tiles will be downloaded at the same time [default: 16]
   -r, --retries <RETRIES>
@@ -240,7 +246,7 @@ Options:
       --retry-delay <RETRY_DELAY>
           Amount of time to wait before retrying a request that failed. Applies only to the first retry. Subsequent retries follow an exponential backoff strategy: each one is twice as long as the previous one [default: 2s]
       --compression <COMPRESSION>
-          A number between 0 and 100 expressing how much to compress the output image. For lossy output formats such as jpeg, this affects the quality of the resulting image. 0 means less compression, 100 means more compression. Currently affects only the JPEG and PNG encoders [default: 20]
+          A number between 0 and 100 expressing how much to compress the output image. For lossy output formats such as jpeg, this affects the quality of the resulting image. 0 means less compression, 100 means more compression. Currently affects only the JPEG and PNG encoders [default: 5]
   -H, --header <HEADERS>
           Sets an HTTP header to use on requests. This option can be repeated in order to set multiple headers. You can use `-H "Referer: URL"` where URL is the URL of the website's viewer page in order to let the site think you come from the legitimate viewer
       --max-idle-per-host <MAX_IDLE_PER_HOST>
@@ -254,13 +260,54 @@ Options:
       --connect-timeout <CONNECT_TIMEOUT>
           Time after which we should give up when trying to connect to a server [default: 6s]
       --logging <LOGGING>
-          Level of logging verbosity. Set it to "debug" to get all logging messages [default: warn]
+          Level of logging verbosity. Set it to "debug" to get all logging messages [default: info]
   -c, --tile-cache <TILE_STORAGE_FOLDER>
           A place to store the image tiles when after they are downloaded and decrypted. By default, tiles are not stored to disk (which is faster), but using a tile cache allows retrying partially failed downloads, or stitching the tiles with an external program
       --bulk <BULK>
-          Path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
+          URL or path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL. Accepts both local file paths and HTTP(S) URLs. Can also directly process IIIF manifests to download all images with enhanced metadata-based filenames. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
   -V, --version
           Print version
+```
+
+## Multi-Image Selection
+
+Many sources contain multiple zoomable images rather than just one. Dezoomify-rs can handle these cases intelligently:
+
+### Automatic Detection
+- **IIIF Manifests**: When you provide a manifest URL, dezoomify-rs will extract all images and let you choose which one to download
+- **Krpano Scenes**: Multi-scene Krpano files (like panoramic tours) are processed as separate images
+- **Bulk Processing**: Text files with multiple URLs are processed sequentially
+
+### Interactive Selection
+When multiple images are found, dezoomify-rs will show you a list with titles and descriptions:
+```
+Found 3 images:
+[0] Front cover (2000x3000 pixels)
+[1] f. 1r - Gospel of Matthew begins (4000x6000 pixels) 
+[2] Back cover (2000x3000 pixels)
+Enter the image number to download (0-2): 
+```
+
+### Non-Interactive Selection
+For automated workflows, use the `--image-index` option:
+```sh
+# Download the second image (0-based indexing)
+dezoomify-rs --image-index 1 https://example.com/iiif/manifest.json
+
+# In bulk mode, the first image is selected automatically
+dezoomify-rs --bulk urls.txt
+```
+
+### Examples
+```sh
+# Interactive selection from an IIIF manifest
+dezoomify-rs https://library.example.edu/iiif/manuscript/manifest.json
+
+# Select specific image non-interactively  
+dezoomify-rs --image-index 2 https://library.example.edu/iiif/manuscript/manifest.json output.jpg
+
+# Bulk process with automatic first-image selection
+dezoomify-rs --bulk manuscript-urls.txt
 ```
 
 ## Documentation
@@ -269,26 +316,65 @@ Options:
 
 ## Bulk mode
 
-dezoomify-rs supports bulk processing of multiple URLs using the `--bulk` option. This allows you to process multiple zoomable images in a single command.
+dezoomify-rs supports bulk processing of multiple URLs using the `--bulk` option. This allows you to process multiple zoomable images in a single command. The bulk source can be either a local file path or a URL.
 
 ### Using bulk mode
 
-Create a text file containing one URL per line:
+#### Option 1: Text file with URLs
+
+Create a text file containing one URL per line, optionally followed by a custom title:
 
 ```
 # urls.txt - Lines starting with # are comments and will be ignored
-https://example.com/image1/ImageProperties.xml
-https://example.com/image2/info.json
+https://example.com/image1/ImageProperties.xml My First Image
+https://example.com/image2/info.json Custom Title for Second Image
 https://example.com/image3.dzi
 
 # You can also include local file paths
-/path/to/local/tiles.yaml
+/path/to/local/tiles.yaml Local Manuscript
 ```
+
+The format for each line is: `URL [custom title]`
+- The URL is required and must be valid
+- The custom title is optional - if not provided, a title will be generated from the URL
+- Everything after the first space following the URL is treated as the title
+- Empty lines and lines starting with # are ignored as comments
 
 Then run dezoomify-rs with the `--bulk` option:
 
 ```sh
 ./dezoomify-rs --bulk urls.txt
+```
+
+#### Option 2: Direct IIIF manifest processing
+
+You can also pass a URL directly to the `--bulk` option to process IIIF manifests:
+
+```sh
+./dezoomify-rs --bulk https://example.com/iiif/manifest.json
+```
+
+This is particularly useful for downloading entire manuscripts or collections from IIIF-compatible repositories. The tool will automatically extract all images from the manifest and generate meaningful filenames using metadata from the manifest.
+
+### Enhanced filename generation
+
+When processing IIIF manifests, dezoomify-rs now creates much more descriptive filenames by leveraging metadata:
+
+- **Metadata titles**: Uses the "Title" field from manifest metadata (e.g., "Gospel-book ('Lindisfarne Gospels')")
+- **Canvas labels**: Incorporates specific page/section labels (e.g., "Front cover", "f. 1r", "Inside back cover")
+- **Smart fallbacks**: Falls back to manifest labels or generic page numbers when metadata isn't available
+
+**Example output filenames:**
+```
+Gospel-book_Lindisfarne_Gospels_Front_cover_0001.jpg
+Gospel-book_Lindisfarne_Gospels_f_1r_0002.jpg
+Gospel-book_Lindisfarne_Gospels_f_1v_0003.jpg
+```
+
+Instead of generic names like:
+```
+Cotton_MS_Nero_D_IV_page_1_0001.jpg
+Cotton_MS_Nero_D_IV_page_2_0002.jpg
 ```
 
 ### Bulk mode behavior
@@ -297,6 +383,7 @@ Then run dezoomify-rs with the `--bulk` option:
 - **Automatic level selection**: If no level-specifying arguments (`--max-width`, `--max-height`, `--zoom-level`) are provided, `--largest` is automatically implied
 - **Output file naming**: If you specify an output file with `--outfile`, each image will be saved with a suffix (`_0001`, `_0002`, etc.)
 - **Error handling**: Failed downloads don't stop the entire process; the tool continues with the next URL and reports a summary at the end
+- **Metadata preservation**: IIIF manifest metadata is extracted and used for intelligent filename generation
 
 ### Examples
 
@@ -310,6 +397,18 @@ Process with specific size constraints:
 ```sh
 ./dezoomify-rs --bulk urls.txt --max-width 2000
 # Uses max-width constraint instead of auto-selecting largest
+```
+
+Process an IIIF manifest directly:
+```sh
+./dezoomify-rs --bulk https://library.example.edu/iiif/manuscript123/manifest.json
+# Downloads all pages with meaningful names based on manifest metadata
+```
+
+Process a bulk file from a URL:
+```sh
+./dezoomify-rs --bulk https://example.com/collection-urls.txt
+# Downloads and processes the URL list from the remote file
 ```
 
 ### Alternative: Using shell scripts
