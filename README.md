@@ -228,15 +228,15 @@ Options:
   -?, --help
           Displays this help message
   -d, --dezoomer <DEZOOMER>
-          Name of the dezoomer to use [default: auto]
+          Name of the dezoomer to use. "auto" will try to detect the format automatically [default: auto]
   -l, --largest
-          If several zoom levels are available, then select the largest one
+          If several zoom levels are available, select the largest one (highest resolution)
   -w, --max-width <MAX_WIDTH>
-          If several zoom levels are available, then select the one with the largest width that is inferior to max-width
+          If several zoom levels are available, select the one with the largest width that does not exceed this value (in pixels)
   -h, --max-height <MAX_HEIGHT>
-          If several zoom levels are available, then select the one with the largest height that is inferior to max-height
+          If several zoom levels are available, select the one with the largest height that does not exceed this value (in pixels)
       --zoom-level <ZOOM_LEVEL>
-          Select a specific zoom level by its index (0-based). If the specified level doesn't exist, falls back to the last one
+          Select a specific zoom level by its index (0-based). Use 0 for the smallest, 1 for the next level up, etc. If the specified level doesn't exist, falls back to the highest available level
       --image-index <IMAGE_INDEX>
           Select a specific image by its index (0-based) when multiple images are found. If not specified, the program will ask interactively when multiple images are available. If the specified index doesn't exist, falls back to the last one
   -n, --parallelism <PARALLELISM>
@@ -264,7 +264,7 @@ Options:
   -c, --tile-cache <TILE_STORAGE_FOLDER>
           A place to store the image tiles when after they are downloaded and decrypted. By default, tiles are not stored to disk (which is faster), but using a tile cache allows retrying partially failed downloads, or stitching the tiles with an external program
       --bulk <BULK>
-          URL or path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL. Accepts both local file paths and HTTP(S) URLs. Can also directly process IIIF manifests to download all images with enhanced metadata-based filenames. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
+          URL or path to a text file containing a list of URLs to process in bulk mode. Each line in the file should contain one URL, optionally followed by a custom title. Format: URL [custom title] Lines starting with # are treated as comments and ignored. Accepts both local file paths and HTTP(S) URLs. Can also directly process IIIF manifests to download all images with enhanced metadata-based filenames. In bulk mode, if no level-specifying argument is defined (such as --max-width), then --largest is implied
   -V, --version
           Print version
 ```
