@@ -10,14 +10,20 @@ use image::{self, DynamicImage, GenericImageView};
 use image_hasher::HasherConfig;
 use tempdir::TempDir;
 
-use dezoomify_rs::{Arguments, ZoomError, bulk::read_bulk_urls, dezoomify};
+use dezoomify_rs::{Arguments, ZoomError, dezoomify, process_bulk};
 
 /// Dezoom a file locally
 #[tokio::test(flavor = "multi_thread")]
 pub async fn custom_size_local_zoomify_tiles() {
+    // Get absolute path to avoid working directory issues
+    let workspace_root = get_workspace_root();
+    let input_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    let expected_path =
+        workspace_root.join("testdata/zoomify/test_custom_size/expected_result.jpg");
+
     test_image(
-        "testdata/zoomify/test_custom_size/ImageProperties.xml",
-        "testdata/zoomify/test_custom_size/expected_result.jpg",
+        input_path.to_str().unwrap(),
+        expected_path.to_str().unwrap(),
     )
     .await
     .unwrap()
@@ -25,9 +31,14 @@ pub async fn custom_size_local_zoomify_tiles() {
 
 #[tokio::test(flavor = "multi_thread")]
 pub async fn local_generic_tiles() {
+    // Get absolute path to avoid working directory issues
+    let workspace_root = get_workspace_root();
+    let input_path = workspace_root.join("testdata/generic/map_{{X}}_{{Y}}.jpg");
+    let expected_path = workspace_root.join("testdata/generic/map_expected.png");
+
     test_image(
-        "testdata/generic/map_{{X}}_{{Y}}.jpg",
-        "testdata/generic/map_expected.png",
+        input_path.to_str().unwrap(),
+        expected_path.to_str().unwrap(),
     )
     .await
     .unwrap()
@@ -41,6 +52,42 @@ pub async fn bulk_mode_local_tiles() {
 #[tokio::test(flavor = "multi_thread")]
 pub async fn bulk_mode_end_to_end_cli() {
     test_bulk_mode_cli_end_to_end().await.unwrap()
+}
+
+/// Get the workspace root directory (where Cargo.toml is located)
+fn get_workspace_root() -> PathBuf {
+    let mut current_dir = std::env::current_dir().expect("Failed to get current directory");
+
+    // Walk up the directory tree until we find Cargo.toml
+    loop {
+        if current_dir.join("Cargo.toml").exists() {
+            return current_dir;
+        }
+        if let Some(parent) = current_dir.parent() {
+            current_dir = parent.to_path_buf();
+        } else {
+            break;
+        }
+    }
+
+    // If we can't find Cargo.toml by walking up, try using the CARGO_MANIFEST_DIR environment variable
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let manifest_path = PathBuf::from(manifest_dir);
+        if manifest_path.join("Cargo.toml").exists() {
+            return manifest_path;
+        }
+    }
+
+    // Last resort: try relative path from where tests typically run
+    let test_workspace = PathBuf::from("../");
+    if test_workspace.join("Cargo.toml").exists() {
+        return test_workspace
+            .canonicalize()
+            .expect("Failed to canonicalize path");
+    }
+
+    // If all else fails, return current directory and let tests fail with better error message
+    std::env::current_dir().expect("Failed to get current directory")
 }
 
 #[allow(clippy::needless_lifetimes)]
@@ -116,26 +163,30 @@ fn hash<T: Hash>(v: T) -> u64 {
 
 #[allow(dead_code)]
 async fn test_bulk_processing() -> Result<(), ZoomError> {
+    // Get workspace root to use absolute paths
+    let workspace_root = get_workspace_root();
+
     // Create a temporary directory for the test
     let temp_dir = TempDir::new("dezoomify-rs-bulk-test").unwrap();
 
-    // Create a bulk URLs file
+    // Create a bulk URLs file with absolute paths
     let bulk_file_path = temp_dir.path().join("urls.txt");
     let mut bulk_file = File::create(&bulk_file_path).unwrap();
     writeln!(bulk_file, "# Bulk test URLs").unwrap();
-    writeln!(
-        bulk_file,
-        "testdata/zoomify/test_custom_size/ImageProperties.xml"
-    )
-    .unwrap();
-    writeln!(bulk_file, "testdata/generic/map_{{{{X}}}}_{{{{Y}}}}.jpg").unwrap();
+
+    // Use absolute paths to testdata
+    let zoomify_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    let generic_path = workspace_root.join("testdata/generic/map_{{X}}_{{Y}}.jpg");
+
+    writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
+    writeln!(bulk_file, "{}", generic_path.to_string_lossy()).unwrap();
     writeln!(bulk_file).unwrap(); // Empty line
     writeln!(bulk_file, "# Comment line should be ignored").unwrap();
     drop(bulk_file);
 
     // Setup arguments for bulk processing
     let mut args: Arguments = Default::default();
-    args.bulk = Some(bulk_file_path);
+    args.bulk = Some(bulk_file_path.to_string_lossy().to_string());
     args.largest = true; // This should be implied anyway in bulk mode
     args.retries = 0;
     args.logging = "error".into();
@@ -144,71 +195,29 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
     let output_base = temp_dir.path().join("bulk_test.jpg");
     args.outfile = Some(output_base.clone());
 
-    // Execute bulk processing using the main function logic
-    let urls = read_bulk_urls(args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
-        source: std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Bulk file path not set in Arguments for test_bulk_processing",
-        ),
-    })?)?;
-    assert_eq!(urls.len(), 2, "Should read exactly 2 URLs from bulk file");
+    // Execute bulk processing using the new unified architecture
+    let stats = process_bulk(&args).await?;
 
-    let mut successful_count = 0;
-    let mut processed_files = Vec::new();
+    // Verify statistics
+    assert_eq!(
+        stats.total_images, 2,
+        "Should process exactly 2 images from bulk file"
+    );
+    assert!(
+        stats.successful_images + stats.partial_downloads > 0,
+        "At least some images should succeed"
+    );
 
-    for (index, url) in urls.iter().enumerate() {
-        // Create a modified args for this specific URL
-        let mut single_args = args.clone();
-        single_args.input_uri = Some(url.clone());
-        single_args.bulk = None; // Disable bulk mode for individual processing
-
-        // Generate output file name with suffix
-        let output_file = generate_bulk_output_name(&output_base, index);
-        single_args.outfile = Some(output_file.clone());
-
-        match dezoomify(&single_args).await {
-            Ok(saved_as) => {
-                assert!(
-                    saved_as.exists(),
-                    "Output file should exist: {:?}",
-                    saved_as
-                );
-
-                // Verify the image can be opened and has reasonable dimensions
-                let img =
-                    image::open(&saved_as).expect("Should be able to open the generated image");
-                let (width, height) = img.dimensions();
-                assert!(
-                    width > 0 && height > 0,
-                    "Image should have valid dimensions"
-                );
-                assert!(
-                    width > 100 && height > 100,
-                    "Image should be reasonably sized (not tiny)"
-                );
-
-                processed_files.push(saved_as);
-                successful_count += 1;
-            }
-            Err(_err @ ZoomError::PartialDownload { .. }) => {
-                // Partial downloads are still considered successful for the test
-                successful_count += 1;
-            }
-            Err(err) => {
-                panic!("Unexpected error processing URL {}: {}", url, err);
-            }
-        }
-    }
+    let successful_count = stats.successful_images + stats.partial_downloads;
 
     assert_eq!(
         successful_count, 2,
         "Both URLs should be processed successfully"
     );
-    assert_eq!(processed_files.len(), 2, "Should have 2 output files");
 
     // Verify the output files have the expected naming pattern
-    let expected_file1 = output_base.parent().unwrap().join("bulk_test_0001.jpg");
-    let expected_file2 = output_base.parent().unwrap().join("bulk_test_0002.jpg");
+    let expected_file1 = output_base.parent().unwrap().join("bulk_test_1.jpg");
+    let expected_file2 = output_base.parent().unwrap().join("bulk_test_2.jpg");
 
     assert!(
         expected_file1.exists(),
@@ -237,39 +246,27 @@ async fn test_bulk_processing() -> Result<(), ZoomError> {
 }
 
 #[allow(dead_code)]
-fn generate_bulk_output_name(base_outfile: &Path, index: usize) -> PathBuf {
-    let stem = base_outfile.file_stem().unwrap_or_default();
-    let extension = base_outfile.extension().unwrap_or_default();
-    let parent = base_outfile.parent().unwrap_or_else(|| Path::new("."));
-
-    let mut new_name = std::ffi::OsString::from(stem);
-    new_name.push(format!("_{:04}", index + 1));
-    if !extension.is_empty() {
-        new_name.push(".");
-        new_name.push(extension);
-    }
-
-    parent.join(new_name)
-}
-
-#[allow(dead_code)]
 async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     use std::env;
+
+    // Get workspace root to use absolute paths
+    let workspace_root = get_workspace_root();
 
     // Create a temporary directory for the test
     let temp_dir = TempDir::new("dezoomify-rs-cli-bulk-test").unwrap();
 
-    // Create a bulk URLs file
+    // Create a bulk URLs file with absolute paths
     let bulk_file_path = temp_dir.path().join("test_urls.txt");
     let mut bulk_file = File::create(&bulk_file_path).unwrap();
     writeln!(bulk_file, "# Test URLs for bulk CLI processing").unwrap();
-    writeln!(
-        bulk_file,
-        "testdata/zoomify/test_custom_size/ImageProperties.xml"
-    )
-    .unwrap();
+
+    // Use absolute paths to testdata
+    let zoomify_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    let generic_path = workspace_root.join("testdata/generic/map_{{X}}_{{Y}}.jpg");
+
+    writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
     writeln!(bulk_file).unwrap(); // Empty line should be ignored
-    writeln!(bulk_file, "testdata/generic/map_{{{{X}}}}_{{{{Y}}}}.jpg").unwrap();
+    writeln!(bulk_file, "{}", generic_path.to_string_lossy()).unwrap();
     writeln!(bulk_file, "# Another comment").unwrap();
     drop(bulk_file);
 
@@ -280,7 +277,7 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     let _original_dir = env::current_dir().unwrap(); // Keep reference for safety
 
     // Create CLI arguments as they would come from command line
-    // Note: input_uri and outfile are positional arguments, so they come after flags
+    // Note: When using --bulk, outfile should not be provided as positional argument
     let args = vec![
         "dezoomify-rs".to_string(),
         "--bulk".to_string(),
@@ -289,126 +286,38 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
         "error".to_string(),
         "--retries".to_string(),
         "0".to_string(),
-        // When using --bulk, we don't provide input_uri as positional arg
-        // but we do provide outfile as positional arg
-        output_file.to_string_lossy().to_string(),
     ];
 
-    // Test CLI argument parsing
-    let mut parsed_args =
-        Arguments::try_parse_from(args.clone()).expect("CLI parsing should succeed");
+    // Parse arguments using clap
+    let mut parsed_args = Arguments::try_parse_from(args).expect("CLI parsing should succeed");
+
+    // Set the outfile after parsing (in bulk mode, this is typically how it's done)
+    parsed_args.outfile = Some(output_file.clone());
 
     // Verify the arguments were parsed correctly
-    assert!(parsed_args.is_bulk_mode(), "Should be in bulk mode");
+    assert!(parsed_args.bulk.is_some());
     assert_eq!(
-        parsed_args.bulk.as_ref().expect("bulk should be Some"),
-        &bulk_file_path,
-        "Bulk file path should match"
+        parsed_args.bulk.as_ref().unwrap(),
+        &bulk_file_path.to_string_lossy().to_string()
     );
+    assert!(parsed_args.outfile.is_some());
 
-    // In bulk mode, the positional argument gets parsed as input_uri instead of outfile
-    // We need to move it to the correct place for our test
-    let actual_output_file = if parsed_args.outfile.is_none() && parsed_args.input_uri.is_some() {
-        let output_from_input = PathBuf::from(parsed_args.input_uri.take().unwrap());
-        parsed_args.outfile = Some(output_from_input.clone());
-        output_from_input
-    } else {
-        parsed_args
-            .outfile
-            .as_ref()
-            .expect("outfile should be Some")
-            .clone()
-    };
+    // Test the complete bulk processing flow using the new unified architecture
+    let stats = process_bulk(&parsed_args)
+        .await
+        .expect("Bulk processing should succeed");
 
-    assert_eq!(actual_output_file, output_file, "Output file should match");
+    // Verify statistics
+    assert_eq!(stats.total_images, 2, "Should process exactly 2 images");
+    let successful_count = stats.successful_images + stats.partial_downloads;
     assert_eq!(
-        parsed_args.logging, "error",
-        "Logging level should be error"
-    );
-    assert_eq!(parsed_args.retries, 0, "Retries should be 0");
-
-    // Test that URLs are read correctly
-    let urls = read_bulk_urls(parsed_args.bulk.as_ref().ok_or_else(|| ZoomError::Io {
-        source: std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Bulk file path not set in Arguments for test_bulk_mode_cli_end_to_end",
-        ),
-    })?)
-    .expect("Should read URLs from bulk file");
-    assert_eq!(urls.len(), 2, "Should read exactly 2 URLs");
-    assert_eq!(
-        urls[0],
-        "testdata/zoomify/test_custom_size/ImageProperties.xml"
-    );
-    assert_eq!(urls[1], "testdata/generic/map_{{X}}_{{Y}}.jpg");
-
-    // Test the complete bulk processing flow using the main library function
-    // This simulates exactly what would happen when running the CLI
-    let mut successful_count = 0;
-    let total_urls = urls.len();
-
-    for (index, url) in urls.iter().enumerate() {
-        // Create arguments for individual processing (simulating main.rs logic)
-        let mut single_args = parsed_args.clone();
-        single_args.input_uri = Some(url.clone());
-        single_args.bulk = None;
-
-        // Apply bulk mode logic: if no level-specifying args, imply --largest
-        if parsed_args.is_bulk_mode() && !parsed_args.has_level_specifying_args() {
-            single_args.largest = true;
-        }
-
-        // Generate bulk output file name
-        let bulk_output_path = generate_bulk_output_name(&actual_output_file, index);
-        single_args.outfile = Some(bulk_output_path.clone());
-
-        // Process the URL
-        match dezoomify(&single_args).await {
-            Ok(saved_as) => {
-                // Verify the file was created with correct name
-                assert!(
-                    saved_as.exists(),
-                    "Output file should exist: {:?}",
-                    saved_as
-                );
-                assert_eq!(
-                    saved_as, bulk_output_path,
-                    "Saved file path should match expected bulk name"
-                );
-
-                // Verify the image is valid
-                let img = image::open(&saved_as).expect("Should be able to open generated image");
-                let (width, height) = img.dimensions();
-                assert!(
-                    width > 0 && height > 0,
-                    "Image should have valid dimensions"
-                );
-                assert!(
-                    width >= 100 && height >= 100,
-                    "Image should be reasonably sized"
-                );
-
-                successful_count += 1;
-            }
-            Err(ZoomError::PartialDownload { .. }) => {
-                // Partial downloads are acceptable for this test
-                successful_count += 1;
-            }
-            Err(err) => {
-                panic!("Unexpected error processing URL '{}': {}", url, err);
-            }
-        }
-    }
-
-    // Verify all URLs were processed successfully
-    assert_eq!(
-        successful_count, total_urls,
-        "All URLs should be processed successfully"
+        successful_count, stats.total_images,
+        "All images should be processed successfully"
     );
 
     // Verify the expected output files exist with correct naming
-    let expected_file1 = temp_dir.path().join("cli_bulk_test_0001.jpg");
-    let expected_file2 = temp_dir.path().join("cli_bulk_test_0002.jpg");
+    let expected_file1 = temp_dir.path().join("cli_bulk_test_1.jpg");
+    let expected_file2 = temp_dir.path().join("cli_bulk_test_2.jpg");
 
     assert!(
         expected_file1.exists(),
@@ -459,4 +368,210 @@ async fn test_bulk_mode_cli_end_to_end() -> Result<(), ZoomError> {
     );
 
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bulk_mode_uses_image_titles_for_iiif_manifest() {
+    // Get workspace root to use absolute paths
+    let workspace_root = get_workspace_root();
+
+    // Create a temporary directory for the test
+    let temp_dir = TempDir::new("dezoomify-rs-bulk-title-test").unwrap();
+
+    // Create a bulk URLs file with a simple test manifest
+    let bulk_file_path = temp_dir.path().join("urls.txt");
+    let mut bulk_file = File::create(&bulk_file_path).unwrap();
+
+    // Use absolute path to testdata
+    let zoomify_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
+    drop(bulk_file);
+
+    // Setup arguments for bulk processing WITHOUT specifying outfile
+    let mut args: Arguments = Default::default();
+    let bulk_path_string = bulk_file_path.to_string_lossy().to_string();
+    args.bulk = Some(bulk_path_string);
+    args.largest = true;
+    args.retries = 0;
+    args.logging = "error".into();
+
+    // Set the working directory to the test temp dir for output
+    let original_dir = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&temp_dir).unwrap();
+
+    // Run bulk processing
+    let result = process_bulk(&args).await;
+
+    // Restore original directory
+    std::env::set_current_dir(&original_dir).unwrap();
+
+    let stats = result.unwrap();
+    assert_eq!(stats.total_images, 1);
+    assert_eq!(stats.successful_images, 1);
+
+    // Check that the generated file uses the image title
+    let entries: Vec<_> = std::fs::read_dir(&temp_dir)
+        .unwrap()
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "jpg") {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    assert_eq!(entries.len(), 1, "Expected exactly one output file");
+    let output_file = &entries[0];
+    let file_name_os = output_file.file_name().unwrap();
+    let filename = file_name_os.to_string_lossy();
+
+    // The filename should be based on the title (test_custom_size) from the Zoomify dezoomer
+    // NOT "dezoomified"
+    assert!(
+        filename.starts_with("test_custom_size"),
+        "Expected filename to start with 'test_custom_size', got: {}",
+        filename
+    );
+    assert!(
+        !filename.starts_with("dezoomified"),
+        "Filename should not start with 'dezoomified', got: {}",
+        filename
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bulk_mode_with_outfile_specified_still_uses_titles_in_naming() {
+    // Get workspace root to use absolute paths
+    let workspace_root = get_workspace_root();
+
+    // Test that even when outfile is specified, the title logic is preserved
+    let temp_dir = TempDir::new("dezoomify-rs-bulk-outfile-test").unwrap();
+
+    let bulk_file_path = temp_dir.path().join("urls.txt");
+    let mut bulk_file = File::create(&bulk_file_path).unwrap();
+
+    // Use absolute path to testdata
+    let zoomify_path = workspace_root.join("testdata/zoomify/test_custom_size/ImageProperties.xml");
+    writeln!(bulk_file, "{}", zoomify_path.to_string_lossy()).unwrap();
+    drop(bulk_file);
+
+    let mut args: Arguments = Default::default();
+    let bulk_path_string = bulk_file_path.to_string_lossy().to_string();
+    args.bulk = Some(bulk_path_string);
+    args.largest = true;
+    args.retries = 0;
+    args.logging = "error".into();
+
+    // Set a custom outfile - this should result in index-based naming but still use the title
+    args.outfile = Some(temp_dir.path().join("my_collection.jpg"));
+
+    let stats = process_bulk(&args).await.unwrap();
+    assert_eq!(stats.total_images, 1);
+    assert_eq!(stats.successful_images, 1);
+
+    // When outfile is specified, it should use indexed naming with the base outfile name
+    let entries: Vec<_> = std::fs::read_dir(&temp_dir)
+        .unwrap()
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "jpg") {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    assert_eq!(entries.len(), 1, "Expected exactly one output file");
+    let output_file = &entries[0];
+    let file_name_os = output_file.file_name().unwrap();
+    let filename = file_name_os.to_string_lossy();
+
+    // With outfile specified, should use indexed naming
+    assert!(
+        filename.starts_with("my_collection_1"),
+        "Expected filename to start with 'my_collection_1', got: {}",
+        filename
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_google_arts_and_culture_dezoomer_basic() {
+    use dezoomify_rs::dezoomer::{Dezoomer, DezoomerError, DezoomerInput, PageContents};
+    use dezoomify_rs::google_arts_and_culture::GAPDezoomer;
+    use std::fs;
+
+    let workspace_root = get_workspace_root();
+    let test_html_path = workspace_root.join("testdata/google_arts_and_culture/page_source.html");
+    let test_xml_path = workspace_root.join("testdata/google_arts_and_culture/tile_info.xml");
+
+    // Check that test files exist
+    assert!(test_html_path.exists(), "Test HTML file should exist");
+    assert!(test_xml_path.exists(), "Test XML file should exist");
+
+    let mut dezoomer = GAPDezoomer::default();
+
+    // Test 1: Parse Google Arts page
+    let page_html = fs::read(&test_html_path).unwrap();
+    let input1 = DezoomerInput {
+        uri: "https://artsandculture.google.com/asset/test".to_string(),
+        contents: PageContents::Success(page_html),
+    };
+
+    let result1 = dezoomer.zoom_levels(&input1);
+    let tile_info_uri = match result1 {
+        Err(DezoomerError::NeedsData { uri }) => {
+            assert!(uri.ends_with("=g"));
+            uri
+        }
+        other => panic!("Expected NeedsData, got: {:?}", other),
+    };
+
+    // Test 2: Parse tile info XML
+    let tile_info_xml = fs::read(&test_xml_path).unwrap();
+    let input2 = DezoomerInput {
+        uri: tile_info_uri,
+        contents: PageContents::Success(tile_info_xml),
+    };
+
+    let result2 = dezoomer.zoom_levels(&input2);
+    match result2 {
+        Ok(levels) => {
+            assert!(!levels.is_empty(), "Should have at least one zoom level");
+            println!("Successfully parsed {} zoom levels", levels.len());
+        }
+        Err(e) => panic!("Failed to parse tile info: {:?}", e),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_google_arts_and_culture_url_validation() {
+    use dezoomify_rs::dezoomer::{Dezoomer, DezoomerError, DezoomerInput, PageContents};
+    use dezoomify_rs::google_arts_and_culture::GAPDezoomer;
+
+    let mut dezoomer = GAPDezoomer::default();
+
+    // Test 1: Valid Google Arts & Culture URL should be accepted
+    let valid_input = DezoomerInput {
+        uri: "https://artsandculture.google.com/asset/test".to_string(),
+        contents: PageContents::Success(b"invalid html".to_vec()),
+    };
+
+    let result = dezoomer.zoom_levels(&valid_input);
+    // Should not be rejected as wrong dezoomer
+    assert!(!matches!(result, Err(DezoomerError::WrongDezoomer { .. })));
+
+    // Test 2: Invalid URL should be rejected
+    let mut dezoomer2 = GAPDezoomer::default();
+    let invalid_input = DezoomerInput {
+        uri: "https://example.com/test".to_string(),
+        contents: PageContents::Success(vec![]),
+    };
+
+    let result = dezoomer2.zoom_levels(&invalid_input);
+    assert!(matches!(result, Err(DezoomerError::WrongDezoomer { .. })));
 }
