@@ -3,12 +3,13 @@ use std::convert::TryFrom;
 use std::io::{self, Write};
 
 use image::{DynamicImage, GenericImageView, Pixel, Rgb, SubImage};
-use log::debug;
+use log::{debug,info};
 
 use crate::encoder::crop_tile;
 use crate::tile::Tile;
 use crate::{Vec2d, max_size_in_rect};
 use std::sync::Arc;
+use crate::progress::Progress;
 
 const BYTES_PER_PIXEL: usize = Rgb::<u8>::CHANNEL_COUNT as usize;
 
@@ -19,6 +20,7 @@ pub struct PixelStreamer<W: Write> {
     writer: W,
     size: Vec2d,
     current_index: usize,
+    progress: Progress,
 }
 
 impl<W: Write> PixelStreamer<W> {
@@ -28,10 +30,14 @@ impl<W: Write> PixelStreamer<W> {
             writer,
             size,
             current_index: 0,
+            progress: Progress::new(size.x as usize * size.y as usize, 1),
         }
     }
 
     pub fn add_tile(&mut self, tile: Tile) -> io::Result<()> {
+        if self.current_index == 0 {
+            self.progress.start();
+        }
         for strip in ImageStrip::in_tile(tile, self.size) {
             let key = strip.pixel_index(self.size);
             self.strips.insert(key, strip);
@@ -53,6 +59,9 @@ impl<W: Write> PixelStreamer<W> {
                         self.current_index, strip_size, start_strip_idx
                     );
                     self.current_index += strip_size - start_strip_idx;
+                    if self.progress.advance(self.current_index) {
+                        info!("{}  Size: {:.1} MiB", self.progress, self.current_index as f32 / 1024.0 / 1024.0)
+                    }
                 }
             } else if finalize {
                 // We are finalizing the image and missing data for a part of it
@@ -69,6 +78,8 @@ impl<W: Write> PixelStreamer<W> {
         let image_size = (self.size.x as usize) * (self.size.y as usize);
         self.fill_blank(image_size)?;
         self.writer.flush()?;
+        self.progress.finish();
+        info!("{}  Size: {:.1} MiB", self.progress, self.current_index as f32 / 1024.0 / 1024.0);
         Ok(())
     }
 

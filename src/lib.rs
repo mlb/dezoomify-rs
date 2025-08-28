@@ -52,6 +52,8 @@ pub mod pff;
 mod throttler;
 pub mod zoomify;
 
+mod progress;
+
 fn stdin_line() -> Result<String, ZoomError> {
     let stdin = std::io::stdin();
     let mut lines = stdin.lock().lines();
