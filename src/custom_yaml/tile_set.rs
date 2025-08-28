@@ -5,12 +5,14 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, de};
 
 use custom_error::custom_error;
-use evalexpr::DefaultNumericTypes;
+use evalexpr::{Context, ContextWithMutableVariables, DefaultNumericTypes};
 use lazy_static::lazy_static;
 
 use crate::{TileReference, Vec2d};
 
 use super::variable::{BadVariableError, Variables};
+
+type IntType = i64;
 
 #[derive(Deserialize, Debug)]
 pub struct TileSet {
@@ -21,6 +23,10 @@ pub struct TileSet {
     x_template: IntTemplate,
     #[serde(default = "default_y_template")]
     y_template: IntTemplate,
+    #[serde(default = "default_w_template")]
+    w_template: IntTemplate,
+    #[serde(default = "default_h_template")]
+    h_template: IntTemplate,
 }
 
 fn default_x_template() -> IntTemplate {
@@ -31,13 +37,27 @@ fn default_y_template() -> IntTemplate {
     "y".parse().unwrap()
 }
 
+fn default_w_template() -> IntTemplate {
+    "w".parse().unwrap()
+}
+
+fn default_h_template() -> IntTemplate {
+    "h".parse().unwrap()
+}
+
 impl<'a> IntoIterator for &'a TileSet {
     type Item = Result<TileReference, UrlTemplateError>;
     type IntoIter = Box<dyn Iterator<Item = Self::Item> + 'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         Box::new(self.variables.iter_contexts().map(move |ctx| {
-            let ctx = ctx?;
+            let mut ctx = ctx?;
+            if ctx.get_value("w") != None {
+                ctx.set_value("w".into(), evalexpr::Value::Int(self.w_template.eval(&ctx)? as IntType))?
+            }
+            if ctx.get_value("h") != None {
+                ctx.set_value("h".into(), evalexpr::Value::Int(self.h_template.eval(&ctx)? as IntType))?
+            }
             Ok(TileReference {
                 url: self.url_template.eval(&ctx)?,
                 position: Vec2d {
@@ -227,11 +247,13 @@ mod tests {
 
     #[test]
     fn url_template_evaluation() -> Result<(), UrlTemplateError> {
-        let tpl = UrlTemplate::from_str("a {{x}} b {{y}} c")?;
+        let tpl = UrlTemplate::from_str("a {{x}} b {{y}} c {{w}} d {{h}} e")?;
         let mut ctx = evalexpr::HashMapContext::new();
         ctx.set_value("x".into(), evalexpr::Value::Int(0))?;
         ctx.set_value("y".into(), evalexpr::Value::Int(10))?;
-        assert_eq!(tpl.eval(&ctx)?, "a 0 b 10 c");
+        ctx.set_value("w".into(), evalexpr::Value::Int(20))?;
+        ctx.set_value("h".into(), evalexpr::Value::Int(30))?;
+        assert_eq!(tpl.eval(&ctx)?, "a 0 b 10 c 20 d 30 e");
         Ok(())
     }
 
@@ -251,13 +273,17 @@ mod tests {
             variables: Variables::new(vec![
                 VarOrConst::var("x", 0, 1, 1).unwrap(),
                 VarOrConst::var("y", 0, 1, 1).unwrap(),
+                VarOrConst::orconst("w", 1).unwrap(),
+                VarOrConst::orconst("h", 1).unwrap(),
             ]),
-            url_template: UrlTemplate::from_str("{{x}}/{{y}}").unwrap(),
+            url_template: UrlTemplate::from_str("{{x}}/{{y}}/{{w}}/{{h}}").unwrap(),
             x_template: IntTemplate::from_str("x").unwrap(),
             y_template: IntTemplate::from_str("y").unwrap(),
+            w_template: IntTemplate::from_str("w").unwrap(),
+            h_template: IntTemplate::from_str("h").unwrap(),
         };
         let tile_refs: Vec<_> = ts.into_iter().collect::<Result<_, _>>().unwrap();
-        let expected: Vec<_> = vec!["0 0 0/0", "0 1 0/1", "1 0 1/0", "1 1 1/1"]
+        let expected: Vec<_> = vec!["0 0 0/0/1/1", "0 1 0/1/1/1", "1 0 1/0/1/1", "1 1 1/1/1/1"]
             .into_iter()
             .map(TileReference::from_str)
             .collect::<Result<_, _>>()
